@@ -322,8 +322,10 @@ func (s *Service) refreshApps() error {
 		return err
 	}
 	installed := map[string]bool{}
+	var versions []string
 	for _, it := range items {
 		installed[it.GetPackageName()] = true
+		versions = append(versions, fmt.Sprintf("%s@%d", it.GetPackageName(), it.GetVersionCode()))
 	}
 	var list []string
 	for _, p := range appPackages {
@@ -335,7 +337,7 @@ func (s *Service) refreshApps() error {
 	s.packages = list
 	s.foreground = map[string]bool{} // 由快应用重新发 hello
 	s.mu.Unlock()
-	slog.Info("手环上的快应用", "packages", list)
+	slog.Info("手环上的快应用", "packages", list, "versions", versions)
 	for _, p := range list {
 		if err := s.apps.SetStatus(p, true); err != nil {
 			return err

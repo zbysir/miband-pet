@@ -1,8 +1,9 @@
-"""手绘像素猫的动作帧，输出到 src/common/pet/<皮肤>/<状态>_<序号>.png。
+"""手绘像素猫的动作帧，输出到 src/common/pet/<哈希>/<皮肤>/<状态>_<序号>.png，
+目录名写进 src/common/pet/index.js（快应用从这里取路径）。
 
 猫本身是一张字符格子图（BASE），每个字符一个像素：
   K 轮廓  F 毛色  S 条纹  D 暗部  C 浅色（口鼻、围兜、爪子）  P 粉色  E 眼睛  W 眼睛高光  . 透明
-表情、摇尾巴都是在格子图上替换几个格子；牌子、Z、彩纸、笔记本这些道具用代码画在上面。
+表情是在格子图上替换几个格子；尾巴、牌子、Z、彩纸、笔记本用代码画（尾巴先画，压在身体后面）。
 画布 40×40 格，按最近邻放大 SCALE 倍。三种猫共用格子图，只换配色。
 怎么画、踩过哪些坑见 docs/pixel-cat.md。
 
@@ -10,8 +11,12 @@
     PET_OUT=/tmp/pet .venv/bin/python pet-app/tools/gen_pet.py   # 先输出到别的目录预览
 """
 
+import hashlib
+import io
 import os
 import random
+import re
+import shutil
 import sys
 
 from PIL import Image, ImageDraw
@@ -20,7 +25,7 @@ GRID = 40
 SCALE = 4
 OUT = os.environ.get("PET_OUT") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "common", "pet")
 
-# 坐着的猫，正面（28 列 × 28 行），左右对称（第 c 列 ↔ 第 24-c 列），尾巴在右边。
+# 坐着的猫，正面（28 列 × 28 行），左右对称（第 c 列 ↔ 第 24-c 列）。尾巴不在格子图里，见 draw_tail。
 # 第 0~17 行是头，21 格宽（第 2~22 列）：小耳朵，耳朵内侧斜线直接接到平的头顶（中间不要拱起）；
 # 两侧上下都往里收一点（圆）；额头三道纹；大白口鼻。
 # 第 18~27 行是身体，最宽 19 格（第 3~21 列），比头窄：身体和头一样宽就显胖。
@@ -46,13 +51,13 @@ BASE = """
 .....KFFFFFFFFFFFFFK........
 .....KFFFCCCCCCCFFFK........
 ....KFFFCCCCCCCCCFFFK.......
-....KFFFFCCCCCCCFFFFK...KK..
-...KSFFFFCCCCCCCFFFFSK.KFFK.
-...KFFFFFFCCCCCFFFFFFK.KFK..
-...KSDFFFFFCCCFFFFFDSKKFK...
-...KDDFFKKKKFKKKKFFDDFFFK...
-...KDDFKCCCCKCCCCKFDDFFK....
-....KKKKKKKKKKKKKKKKKKK.....
+....KFFFFCCCCCCCFFFFK.......
+...KSFFFFCCCCCCCFFFFSK......
+...KFFFFFFCCCCCFFFFFFK......
+...KSDFFFFFCCCFFFFFDSK......
+...KDDFFKKKKFKKKKFFDDK......
+...KDDFKCCCCKCCCCKFDDK......
+....KKKKKKKKKKKKKKKKK.......
 """.strip("\n").split("\n")
 
 # 眼睛（左眼占第 6~8 列，右眼第 16~18 列；第 7~10 行）。每种表情给出左眼 3 列 × 4 行，右眼照抄（高光都在左上）
@@ -68,12 +73,6 @@ MOUTHS = {
     "smile": ["CKC", "KCK", "CCC"],  # ω
     "open": ["CCC", "KKK", "KKK"],
 }
-# 尾巴的另一个位置（摇尾巴用，尾巴尖往右偏一格），覆盖第 21~23 行、第 23~27 列
-TAIL_B = [
-    "..KK.",
-    ".KFFK",
-    "KFK..",
-]
 
 # 道具和配色
 C = {
@@ -100,7 +99,7 @@ CONFETTI = [(255, 99, 132), (61, 220, 132), (46, 160, 255), (255, 206, 86), (186
 X0, Y0 = 8, 10
 
 
-def cat_grid(eyes="open", mouth="smile", tail="a"):
+def cat_grid(eyes="open", mouth="smile"):
     g = [list(r) for r in BASE]
 
     def put(r, c, ch):
@@ -117,10 +116,6 @@ def cat_grid(eyes="open", mouth="smile", tail="a"):
     for i, row in enumerate(MOUTHS[mouth]):
         for j, ch in enumerate(row):
             put(12 + i, 11 + j, ch)
-    if tail == "b":
-        for i, row in enumerate(TAIL_B):
-            for j, ch in enumerate(row):
-                put(21 + i, 23 + j, ch)
     return g
 
 
@@ -135,6 +130,14 @@ def paste(img, g, dx=0, dy=0, pal=None):
 
 def rect(d, x0, y0, x1, y1, color):
     d.rectangle((x0, y0, x1, y1), fill=color)
+
+
+def draw_tail(img, dy, wag, pal):
+    # 尾巴：5 个 2×2 的方块从身体右下角斜着往上翘，毛色和条纹交替，不描边；
+    # 先画，身体盖住尾巴根。wag（-1/0/1）让上半截左右摆
+    d = ImageDraw.Draw(img)
+    for i, (x, y) in enumerate([(29, 32), (30, 31), (31, 30), (31 + wag, 29), (31 + wag, 28)]):
+        rect(d, x, y + dy, x + 1, y + dy + 1, pal["S"] if i % 2 else pal["F"])
 
 
 def draw_laptop(d, glow):
@@ -184,7 +187,9 @@ def work_frames(pal):
     out = []
     for i in range(6):
         img = new_frame()
-        paste(img, cat_grid(eyes="focus", tail="b" if i % 2 else "a"), dy=1 if i in (2, 3) else 0, pal=pal)
+        dy = 1 if i in (2, 3) else 0
+        draw_tail(img, dy, i % 2, pal)
+        paste(img, cat_grid(eyes="focus"), dy=dy, pal=pal)
         draw_laptop(ImageDraw.Draw(img), glow=i % 3 != 2)
         draw_typing_paws(img, i % 2 == 0, pal)
         out.append(finish(img))
@@ -195,7 +200,8 @@ def alert_frames(pal):
     out = []
     for i, dy in enumerate([0, -2, -3, -2, 0, 0]):
         img = new_frame()
-        paste(img, cat_grid(eyes="wide", mouth="open", tail="b" if i % 2 else "a"), dy=dy, pal=pal)
+        draw_tail(img, dy, 1 if i % 2 else -1, pal)
+        paste(img, cat_grid(eyes="wide", mouth="open"), dy=dy, pal=pal)
         draw_sign(ImageDraw.Draw(img), dy, wobble=1 if i % 2 else 0)
         out.append(finish(img))
     return out
@@ -208,7 +214,8 @@ def celebrate_frames(pal):
     for i, dy in enumerate([0, -1, -2, -1, 0, 0]):
         bits = [(rnd.randrange(1, 39), rnd.randrange(0, 6), rnd.choice(CONFETTI)) for _ in range(14)]
         img = new_frame()
-        paste(img, cat_grid(eyes="happy", mouth="open", tail="b" if i % 2 else "a"), dy=dy, pal=pal)
+        draw_tail(img, dy, 1, pal)
+        paste(img, cat_grid(eyes="happy", mouth="open"), dy=dy, pal=pal)
         d = ImageDraw.Draw(img)
         for x, y, c in bits:
             fy = y + (i * 2) % 6  # 彩纸往下飘，只在头顶上方
@@ -221,7 +228,9 @@ def sleep_frames(pal):
     out = []
     for i in range(8):
         img = new_frame()
-        paste(img, cat_grid(eyes="closed"), dy=1 if i % 4 in (1, 2) else 0, pal=pal)
+        dy = 1 if i % 4 in (1, 2) else 0
+        draw_tail(img, dy, 0, pal)
+        paste(img, cat_grid(eyes="closed"), dy=dy, pal=pal)
         d = ImageDraw.Draw(img)
         k = i % 4
         draw_z(d, 31, 10 - k * 2, 3)
@@ -235,21 +244,38 @@ STATES = {"work": work_frames, "alert": alert_frames, "celebrate": celebrate_fra
 
 
 def main():
-    rows = []
+    # 先把所有帧编码好，按内容算一个短哈希当目录名：手环按图片路径缓存，
+    # 路径不变的话换了形象、重装快应用也还显示旧图（重启手环才好）
+    rows, files = [], {}
     for skin, pal in SKINS.items():
-        out = os.path.join(OUT, skin)
-        os.makedirs(out, exist_ok=True)
-        for name in os.listdir(out):
-            if name.endswith(".png"):
-                os.remove(os.path.join(out, name))
         row = []
         for state, fn in STATES.items():
             frames = fn(pal)
             for i, img in enumerate(frames):
-                img.save(os.path.join(out, f"{state}_{i}.png"), optimize=True)
+                buf = io.BytesIO()
+                img.save(buf, format="PNG", optimize=True)
+                files[f"{skin}/{state}_{i}.png"] = buf.getvalue()
             row.append(frames)
         rows.append(row)
-        print(skin)
+    h = hashlib.sha1()
+    for name in sorted(files):
+        h.update(name.encode() + files[name])
+    version = h.hexdigest()[:8]
+
+    os.makedirs(OUT, exist_ok=True)
+    for name in os.listdir(OUT):  # 删掉旧的帧目录（以前的哈希目录、更早直接放的皮肤目录）
+        if os.path.isdir(os.path.join(OUT, name)) and (name in SKINS or re.fullmatch(r"[0-9a-f]{8}", name)):
+            shutil.rmtree(os.path.join(OUT, name))
+    for name, data in files.items():
+        path = os.path.join(OUT, version, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+    with open(os.path.join(OUT, "index.js"), "w") as f:
+        f.write("// tools/gen_pet.py 生成，不要手改。帧所在的目录，名字是帧内容的哈希\n")
+        f.write(f"export default '/common/pet/{version}/'\n")
+    print("帧目录:", os.path.join(OUT, version))
+
     if len(sys.argv) > 1:
         # 预览：每行一种猫，依次是每个状态的所有帧
         frames = [[f for st in row for f in st] for row in rows]

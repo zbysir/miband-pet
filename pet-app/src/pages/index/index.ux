@@ -43,6 +43,7 @@
 import interconnect from '@system.interconnect'
 import storage from '@system.storage'
 import device from '@system.device'
+import PET_DIR from '../../common/pet/index.js'
 
 const CACHE_KEY = 'pet_cache'
 const SKIN_KEY = 'pet_skin'
@@ -52,7 +53,7 @@ const PRIORITY = { blocked: 0, working: 1, done: 2, idle: 3, unknown: 4 }
 
 function frameList(skin, name, n) {
   const list = []
-  for (let i = 0; i < n; i++) list.push({ src: '/common/pet/' + skin + '/' + name + '_' + i + '.png' })
+  for (let i = 0; i < n; i++) list.push({ src: PET_DIR + skin + '/' + name + '_' + i + '.png' })
   return list
 }
 
