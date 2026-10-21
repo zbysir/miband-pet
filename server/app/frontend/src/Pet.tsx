@@ -3,6 +3,13 @@ import type {Agent} from './types'
 
 // 和手环上的「Agent 猫」同一套帧（pet-app/tools/gen_pet.py 生成，复制到 public/pet）
 export type Mood = 'alert' | 'celebrate' | 'work' | 'sleep'
+export type Skin = 'orange' | 'gray' | 'white'
+
+export const SKINS: { value: Skin, label: string }[] = [
+    {value: 'orange', label: '橘猫'},
+    {value: 'gray', label: '灰猫'},
+    {value: 'white', label: '白猫'},
+]
 
 const FRAMES: Record<Mood, { count: number, duration: number }> = {
     work: {count: 6, duration: 900},
@@ -39,7 +46,7 @@ export function useMood(agents: Agent[]): Mood {
     return 'sleep'
 }
 
-export function Pet({mood, size}: { mood: Mood, size: number }) {
+export function Pet({mood, size, skin = 'orange'}: { mood: Mood, size: number, skin?: Skin }) {
     const [frame, setFrame] = useState(0)
     const {count, duration} = FRAMES[mood]
 
@@ -52,7 +59,7 @@ export function Pet({mood, size}: { mood: Mood, size: number }) {
     return (
         <img
             className="pet"
-            src={`/pet/${mood}_${frame % count}.png`}
+            src={`/pet/${skin}/${mood}_${frame % count}.png`}
             width={size}
             height={size}
             alt=""

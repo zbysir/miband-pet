@@ -133,7 +133,7 @@ function InstallApps({state, bundled, onNext}: { state: AppState, bundled: Bundl
 
     return (
         <>
-            <Pet mood="work" size={112}/>
+            <Pet mood="work" size={112} skin={state.settings?.pet}/>
             <h1>在手环上装上 Agent 猫</h1>
             <p className="muted">手环上会多出两个应用：「Agent 猫」用一只像素猫显示 agent 的整体状态，「Agents」列出每个 agent。</p>
             {bundled.map(b => (
@@ -162,7 +162,7 @@ function InstallApps({state, bundled, onNext}: { state: AppState, bundled: Bundl
 function Done({state, onFinish}: { state: AppState, onFinish: () => void }) {
     return (
         <>
-            <Pet mood="celebrate" size={112}/>
+            <Pet mood="celebrate" size={112} skin={state.settings?.pet}/>
             <h1>好了！</h1>
             <p className="muted">
                 手环现在由这台 Mac 连着，手机已经取消了配对，不会再连上来，手机蓝牙可以照常使用。

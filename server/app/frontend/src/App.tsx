@@ -1,9 +1,9 @@
 import {useCallback, useEffect, useMemo, useState} from 'react'
-import {BundledApps, GetState, Install, Launch, TestNotify, UpdateSettings} from '../wailsjs/go/main/App'
+import {BundledApps, GetState, Install, Launch, SetPet, TestNotify, UpdateSettings} from '../wailsjs/go/main/App'
 import {EventsOn} from '../wailsjs/runtime/runtime'
 import {Wizard} from './Wizard'
-import {Pet, useMood} from './Pet'
-import type {Mood} from './Pet'
+import {Pet, SKINS, useMood} from './Pet'
+import type {Mood, Skin} from './Pet'
 import type {Agent, AlertMode, AppState, BundledApp, Status} from './types'
 import {STATUS_ORDER, STATUS_TEXT} from './types'
 
@@ -52,7 +52,7 @@ export default function App() {
         <div className="app layout">
             <div className="drag"/>
             <aside className="col col-side">
-                <Hero state={state}/>
+                <Hero state={state} run={run}/>
                 <SettingsCard state={state} run={run}/>
                 <BandApps state={state} bundled={bundled} run={run}/>
                 <footer className="footer">
@@ -86,7 +86,7 @@ function countBy(agents: Agent[]): Record<Status, number> {
     return n
 }
 
-function Hero({state}: { state: AppState }) {
+function Hero({state, run}: { state: AppState, run: (label: string, fn: () => Promise<unknown>) => void }) {
     const agents = state.agents ?? []
     const mood = useMood(agents)
     const counts = useMemo(() => countBy(agents), [agents])
@@ -97,7 +97,7 @@ function Hero({state}: { state: AppState }) {
 
     return (
         <header className={`hero hero-${mood}`}>
-            <Pet mood={mood} size={152}/>
+            <Pet mood={mood} size={152} skin={state.settings?.pet}/>
             <div className="hero-text">
                 <h1 className={`headline headline-${mood}`}>{HEADLINE[mood](counts)}</h1>
                 <span className={`pill ${pill.cls}`} title={state.lastError}>{pill.text}</span>
@@ -107,7 +107,24 @@ function Hero({state}: { state: AppState }) {
                     ))}
                 </div>
             </div>
+            <SkinPicker current={state.settings?.pet ?? 'orange'} onPick={skin => run('换猫', () => SetPet(skin))}/>
         </header>
+    )
+}
+
+// 选猫：Mac 界面和手环上的猫一起换
+function SkinPicker({current, onPick}: { current: Skin, onPick: (skin: Skin) => void }) {
+    return (
+        <div className="skins" role="radiogroup" aria-label="选一只猫">
+            {SKINS.map(s => (
+                <button key={s.value} className={`skin ${s.value === current ? 'active' : ''}`}
+                        role="radio" aria-checked={s.value === current} title={s.label}
+                        onClick={() => s.value !== current && onPick(s.value)}>
+                    <img src={`/pet/${s.value}/sleep_0.png`} width={40} height={40} alt=""/>
+                    <span>{s.label}</span>
+                </button>
+            ))}
+        </div>
     )
 }
 

@@ -2,9 +2,11 @@
 
 <p align="center"><img src="docs/pet.gif" alt="Agent 猫的四种状态：有 agent 卡住时举牌，刚跑完一个时庆祝，有 agent 在跑时敲笔记本，都空闲时睡觉" width="760"></p>
 
+<p align="center"><img src="docs/skins.png" alt="可以换猫：橘猫、灰猫（中华田园猫）、白猫（美短）" width="600"></p>
+
 让小米手环 10 Pro 变成 AI agent 的状态宠物：Mac 通过蓝牙直连手环（不经过手机），把 [herdr](https://herdr.dev) 管理的 agent 状态推到手环上的快应用里。
 
-- **Agent 猫**（`pet-app/`）：一只像素橘猫代表所有 agent 的整体状态。有 agent 卡住了它举牌，跑完一个就庆祝，有在跑的就敲笔记本，都空闲时睡觉。
+- **Agent 猫**（`pet-app/`）：一只像素猫代表所有 agent 的整体状态，可以在 App 里换成橘猫、灰猫（中华田园猫）或白猫（美短）。有 agent 卡住了它举牌，跑完一个就庆祝，有在跑的就敲笔记本，都空闲时睡觉。
 - **Agents 列表**（`band-app/`）：按状态排序，列出每个 agent 的项目和任务。
 - **通知**：agent 开始跑、跑完、卡住时，手环震动提醒。
 
@@ -52,7 +54,7 @@ server/miband notify 标题 正文     # 发一条通知
 server/miband apps                # 列出手环上的快应用
 server/miband launch [包名]        # 把快应用打开到前台（默认宠物版），手环会亮屏
 server/miband key                 # 扫码登录小米账号，拉手环的 auth key 和地址写进 ./config.json
-server/miband install pet-app/dist/dev.bysir.herdrpet.debug.1.0.0.rpk
+server/miband install pet-app/dist/dev.bysir.herdrpet.debug.*.rpk
 ```
 
 配置读 `./config.json`（或用 `-config` 指定）。agent 开始跑、跑完、卡住时会提醒手环：
@@ -121,14 +123,15 @@ cd .. && .venv/bin/python main.py install         # 装到手环并打开（重�
 
 另一个快应用「Agent 猫」，用一只像素橘猫表现 agent 的整体状态：有卡住的举牌摇晃，刚完成一个就庆祝 8 秒，有在跑的就敲笔记本，否则睡觉。气泡里显示最值得关注的 agent，点一下猫切换；右滑退出。
 
-- 素材由 `pet-app/tools/gen_pet.py` 用代码画（40×40 像素网格放大 4 倍），改形象只改这个脚本再重新生成。
+- 素材由 `pet-app/tools/gen_pet.py` 用代码画（40×40 像素网格放大 4 倍），三种猫共用动作帧，只换配色和花纹（`SKINS`）；改形象只改这个脚本再重新生成。`make app` 会把帧同步到 Mac App 里。
+- 换猫：Mac App 里选，推给手环的消息带 `pet` 字段，快应用收到后换图片目录并缓存。
 - 手环只支持 png/jpg，不支持 GIF 和视频；动画靠 `image-animator` 帧动画加 CSS `@keyframes`。
 - `pet-app/node_modules` 是指向 `band-app/node_modules` 的软链。
 
 ```sh
 .venv/bin/python pet-app/tools/gen_pet.py [预览图.png]   # 重新生成帧
 cd pet-app && npx aiot build && cd ..
-.venv/bin/python main.py install pet-app/dist/dev.bysir.herdrpet.debug.1.0.0.rpk
+server/miband install pet-app/dist/dev.bysir.herdrpet.debug.*.rpk
 ```
 
 `main.py app` 会同时给列表版和宠物版推数据（装了哪个推哪个）。

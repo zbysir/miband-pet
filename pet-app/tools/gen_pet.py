@@ -1,8 +1,9 @@
-"""用代码画像素风宠物（一只橘猫）的动作帧，输出到 src/common/pet/<状态>_<序号>.png。
+"""用代码画像素风宠物（猫）的动作帧，输出到 src/common/pet/<皮肤>/<状态>_<序号>.png。
 
 在 40x40 的像素网格上画，再按最近邻放大 SCALE 倍，保持像素颗粒感。
+皮肤：orange（橘猫）、gray（灰猫，中华田园猫）、white（白猫，美短）；动作帧共用，只换配色和花纹。
 状态：work（干活）、alert（等你处理）、celebrate（庆祝）、sleep（睡觉）。
-改形象只改这个文件，然后重新跑：.venv/bin/python band-app/tools/gen_pet.py
+改形象只改这个文件，然后重新跑：.venv/bin/python pet-app/tools/gen_pet.py [预览图.png]
 """
 
 import os
@@ -32,6 +33,27 @@ C = {
     "stick": (150, 100, 60),
     "z": (140, 170, 255),
 }
+BASE = dict(C)
+
+# 每种猫只写和橘猫不一样的颜色；tabby=True 时额外画身体两侧和脸颊的条纹
+SKINS = {
+    "orange": {},
+    "gray": {  # 中华田园猫：灰色虎斑
+        "line": (36, 38, 44),
+        "fur": (150, 152, 160),
+        "stripe": (84, 86, 96),
+        "cream": (226, 226, 230),
+        "tabby": True,
+    },
+    "white": {  # 美短：银白底色，深色粗条纹
+        "line": (52, 54, 62),
+        "fur": (232, 233, 238),
+        "stripe": (70, 72, 82),
+        "cream": (255, 255, 255),
+        "tabby": True,
+    },
+}
+
 CONFETTI = [(255, 99, 132), (61, 220, 132), (46, 160, 255), (255, 206, 86), (186, 104, 255)]
 
 
@@ -52,6 +74,11 @@ def draw_cat(d, dy=0, eyes="open", arms="down", tail=0, mouth="smile"):
     # 身体
     d.ellipse((11, y + 9, 29, y + 23), fill=C["line"])
     d.ellipse((12, y + 10, 28, y + 22), fill=C["fur"])
+    if C.get("tabby"):
+        # 虎斑：身体两侧的横条纹
+        for k in (y + 12, y + 15, y + 18):
+            rect(d, 13, k, 15, k, C["stripe"])
+            rect(d, 25, k, 27, k, C["stripe"])
     d.ellipse((16, y + 13, 24, y + 22), fill=C["cream"])
     # 耳朵
     for ex, flip in ((12, 1), (28, -1)):
@@ -64,6 +91,13 @@ def draw_cat(d, dy=0, eyes="open", arms="down", tail=0, mouth="smile"):
     # 额头条纹
     for sx in (18, 20, 22):
         rect(d, sx, y - 2, sx, y, C["stripe"])
+    if C.get("tabby"):
+        # 虎斑：额头条纹更长，脸颊两侧各两道
+        for sx in (18, 22):
+            rect(d, sx, y + 1, sx, y + 1, C["stripe"])
+        for cy in (y + 4, y + 6):
+            rect(d, 11, cy, 12, cy, C["stripe"])
+            rect(d, 28, cy, 29, cy, C["stripe"])
     # 口鼻
     d.ellipse((16, y + 5, 24, y + 10), fill=C["cream"])
     rect(d, 19, y + 5, 21, y + 5, C["pink"])
@@ -195,18 +229,25 @@ STATES = {
 
 
 def main():
-    os.makedirs(OUT, exist_ok=True)
-    for name in os.listdir(OUT):
-        if name.endswith(".png"):
-            os.remove(os.path.join(OUT, name))
     sheet_rows = []
-    for state, fn in STATES.items():
-        frames = fn()
-        for i, img in enumerate(frames):
-            img.save(os.path.join(OUT, f"{state}_{i}.png"), optimize=True)
-        sheet_rows.append(frames)
-        print(f"{state}: {len(frames)} 帧")
-    # 预览图：每行一个状态，深色背景，方便肉眼检查
+    for skin, palette in SKINS.items():
+        C.clear()
+        C.update(BASE)
+        C.update(palette)
+        out = os.path.join(OUT, skin)
+        os.makedirs(out, exist_ok=True)
+        for name in os.listdir(out):
+            if name.endswith(".png"):
+                os.remove(os.path.join(out, name))
+        row = []
+        for state, fn in STATES.items():
+            frames = fn()
+            for i, img in enumerate(frames):
+                img.save(os.path.join(out, f"{state}_{i}.png"), optimize=True)
+            row.append(frames[0])
+        sheet_rows.append(row)
+        print(f"{skin}: {', '.join(STATES)}")
+    # 预览图：每行一种猫，每列一个状态的第一帧，深色背景，方便肉眼检查
     if len(sys.argv) > 1:
         w = max(len(r) for r in sheet_rows) * GRID * SCALE
         sheet = Image.new("RGBA", (w, len(sheet_rows) * GRID * SCALE), (10, 12, 18, 255))

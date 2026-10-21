@@ -18,6 +18,8 @@ type Config struct {
 	NotifyStart *bool `json:"notify_start,omitempty"`
 	// 提醒方式：auto（默认：手环上快应用在前台就只亮屏，否则发通知）/ wake（总是只亮屏）/ notify（总是发通知，会震动）/ both
 	Alert string `json:"alert,omitempty"`
+	// 宠物：orange（橘猫，默认）/ gray（灰猫，中华田园猫）/ white（白猫，美短）
+	Pet string `json:"pet,omitempty"`
 }
 
 func (c Config) NotifyOn() bool      { return c.Notify == nil || *c.Notify }
@@ -31,9 +33,20 @@ func (c Config) AlertMode() string {
 	return "auto"
 }
 
+var Pets = []string{"orange", "gray", "white"}
+
+func (c Config) PetSkin() string {
+	for _, p := range Pets {
+		if c.Pet == p {
+			return p
+		}
+	}
+	return "orange"
+}
+
 func (c Config) Validate() error {
 	if c.AuthKey == "" || c.Address == "" {
-		return errors.New("缺 auth_key 或 address（先跑 get_key.py 拿 key）")
+		return errors.New("缺手环密钥或地址（在 App 里扫码登录，或者运行 miband key）")
 	}
 	return nil
 }

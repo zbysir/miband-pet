@@ -23,6 +23,7 @@ export interface Settings {
     notifyStart: boolean
     alert: AlertMode
     address: string
+    pet: 'orange' | 'gray' | 'white'
 }
 
 export interface AppState {

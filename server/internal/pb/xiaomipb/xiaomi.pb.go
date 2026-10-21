@@ -3388,7 +3388,7 @@ type Health struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	UserInfo *UserInfo              `protobuf:"bytes,1,opt,name=userInfo" json:"userInfo,omitempty"`
 	// 8, 2 get today | 8, 3 get past
-	ActivityRequestFileIds []byte `protobuf:"bytes,2,opt,name=activityRequestFileIds" json:"activityRequestFileIds,omitempty"`
+	ActivityRequestFileIds   []byte                    `protobuf:"bytes,2,opt,name=activityRequestFileIds" json:"activityRequestFileIds,omitempty"`
 	ActivitySyncAckFileIds   []byte                    `protobuf:"bytes,3,opt,name=activitySyncAckFileIds" json:"activitySyncAckFileIds,omitempty"`
 	ActivitySyncRequestToday *ActivitySyncRequestToday `protobuf:"bytes,5,opt,name=activitySyncRequestToday" json:"activitySyncRequestToday,omitempty"`
 	Spo2                     *SpO2                     `protobuf:"bytes,7,opt,name=spo2" json:"spo2,omitempty"`

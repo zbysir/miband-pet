@@ -18,6 +18,7 @@ SIGN_IDENTITY ?= miband pet local signing
 APP_BUNDLE = server/app/build/bin/miband pet.app
 
 app: quickapps
+	rm -rf server/app/frontend/public/pet && cp -R pet-app/src/common/pet server/app/frontend/public/pet
 	rm -f server/app/rpk/*.rpk
 	cp band-app/dist/*.rpk pet-app/dist/*.rpk server/app/rpk/
 	cd server/app && $(WAILS) build -clean

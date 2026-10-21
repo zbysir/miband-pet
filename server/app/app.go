@@ -376,6 +376,19 @@ func (a *App) UpdateSettings(notify, notifyStart bool, alert string) error {
 	return cfg.Save(a.cfgPath)
 }
 
+// SetPet 换猫（orange / gray / white），Mac 界面和手环上的猫一起换。
+func (a *App) SetPet(skin string) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	cfg := svc.SetPet(skin)
+	a.mu.Lock()
+	a.cfg = &cfg
+	a.mu.Unlock()
+	return cfg.Save(a.cfgPath)
+}
+
 func (a *App) TestNotify() error {
 	svc, err := a.service()
 	if err != nil {

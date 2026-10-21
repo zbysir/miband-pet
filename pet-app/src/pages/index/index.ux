@@ -45,13 +45,25 @@ import storage from '@system.storage'
 import device from '@system.device'
 
 const CACHE_KEY = 'pet_cache'
+const SKIN_KEY = 'pet_skin'
+const SKINS = ['orange', 'gray', 'white']
 const CELEBRATE_MS = 8000
 const PRIORITY = { blocked: 0, working: 1, done: 2, idle: 3, unknown: 4 }
 
-function frameList(name, n) {
+function frameList(skin, name, n) {
   const list = []
-  for (let i = 0; i < n; i++) list.push({ src: '/common/pet/' + name + '_' + i + '.png' })
+  for (let i = 0; i < n; i++) list.push({ src: '/common/pet/' + skin + '/' + name + '_' + i + '.png' })
   return list
+}
+
+// 三种猫（orange 橘猫 / gray 灰猫 / white 白猫）动作帧一样，只是图片目录不同
+function framesFor(skin) {
+  return {
+    work: frameList(skin, 'work', 6),
+    alert: frameList(skin, 'alert', 6),
+    celebrate: frameList(skin, 'celebrate', 6),
+    sleep: frameList(skin, 'sleep', 8)
+  }
 }
 
 export default {
@@ -64,12 +76,8 @@ export default {
     counts: { blocked: 0, working: 0, done: 0, idle: 0 },
     connected: false,
     pageH: 360,
-    frames: {
-      work: frameList('work', 6),
-      alert: frameList('alert', 6),
-      celebrate: frameList('celebrate', 6),
-      sleep: frameList('sleep', 8)
-    }
+    skin: 'orange',
+    frames: framesFor('orange')
   },
 
   onInit() {
@@ -91,6 +99,7 @@ export default {
       }
       if (data && data.t === 'agents') {
         this.connected = true
+        if (data.pet) this.setSkin(data.pet, true)
         this.apply(data.agents || [], true)
         storage.set({ key: CACHE_KEY, value: JSON.stringify(data.agents || []) })
       }
@@ -99,6 +108,10 @@ export default {
 
   onShow() {
     this.layout()
+    storage.get({
+      key: SKIN_KEY,
+      success: (v) => { if (v) this.setSkin(v, false) }
+    })
     if (this.agents.length === 0) {
       storage.get({
         key: CACHE_KEY,
@@ -134,6 +147,20 @@ export default {
     this.send({ t: 'bye' })
     this.$app.exit()
     return true
+  },
+
+  // 换猫：帧动画组件换图片列表后不一定刷新，先卸掉再挂回来，强制重建
+  setSkin(skin, save) {
+    if (SKINS.indexOf(skin) < 0 || skin === this.skin) return
+    this.skin = skin
+    this.frames = framesFor(skin)
+    if (save) storage.set({ key: SKIN_KEY, value: skin })
+    const mood = this.mood
+    this.mood = 'none'
+    setTimeout(() => {
+      this.mood = mood
+      this.restartPet()
+    }, 50)
   },
 
   send(obj) {

@@ -200,6 +200,7 @@ func (s *Service) State() State {
 		Events:     append([]EventRecord{}, s.events...),
 		Settings: map[string]any{
 			"notify": s.cfg.NotifyOn(), "notifyStart": s.cfg.NotifyStartOn(), "alert": s.cfg.AlertMode(), "address": s.cfg.Address,
+			"pet": s.cfg.PetSkin(),
 		},
 	}
 	st.Foreground = s.foregroundLocked()
@@ -210,6 +211,18 @@ func (s *Service) State() State {
 		st.LastPush = s.lastPush.UnixMilli()
 	}
 	return st
+}
+
+// SetPet 换猫，并马上推给手环。
+func (s *Service) SetPet(skin string) Config {
+	s.mu.Lock()
+	s.cfg.Pet = skin
+	s.cfg.Pet = s.cfg.PetSkin() // 不认识的值回落到橘猫
+	cfg := s.cfg
+	s.mu.Unlock()
+	s.markDirty()
+	s.changed()
+	return cfg
 }
 
 // UpdateSettings 改提醒设置（不含 key 和地址，那两个要重启服务）。
@@ -412,6 +425,7 @@ func (s *Service) deliver(ctx context.Context) {
 func (s *Service) push(snap *herdr.Snapshot, notes []herdr.Event) error {
 	snap.TS = time.Now().UnixMilli()
 	s.mu.Lock()
+	snap.Pet = s.cfg.PetSkin()
 	packages := append([]string{}, s.packages...)
 	fg := s.foregroundLocked()
 	alert := s.cfg.AlertMode()

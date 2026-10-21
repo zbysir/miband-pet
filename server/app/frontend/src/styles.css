@@ -773,3 +773,40 @@ code {
         transform: rotate(360deg);
     }
 }
+
+/* ---------- 选猫 ---------- */
+
+.skins {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.skin {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 4px 8px 3px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.skin img {
+    image-rendering: pixelated;
+}
+
+.skin:hover {
+    background: var(--hover);
+}
+
+.skin.active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--text);
+}
