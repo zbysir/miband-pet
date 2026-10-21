@@ -121,6 +121,12 @@ func (s *Service) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
+// Close 立刻关掉蓝牙连接。退出时在主线程上调用：这时不能等 Run 结束，
+// 因为 Run 里的蓝牙调用要派发到主线程，主线程在等就会死锁。
+func (s *Service) Close() {
+	s.dev.Close()
+}
+
 func (s *Service) changed() {
 	if s.OnChange != nil {
 		s.OnChange()

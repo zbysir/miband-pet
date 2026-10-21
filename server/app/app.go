@@ -14,12 +14,14 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"miband/internal/service"
+	"miband/internal/tray"
 	"miband/internal/xiaomi"
 )
 
@@ -44,6 +46,8 @@ type App struct {
 
 	emitMu  sync.Mutex
 	emitDue bool
+
+	quitting atomic.Bool // 从菜单栏“退出”时为 true；否则关窗口只是隐藏
 }
 
 func NewApp() *App {
@@ -57,10 +61,31 @@ func (a *App) startup(ctx context.Context) {
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		<-sig
-		runtime.Quit(ctx)
+		a.quit()
 	}()
+	tray.Init(a.showWindow, a.quit)
 	a.bootstrapConfig()
 	a.restartService()
+}
+
+// beforeClose：关窗口时只隐藏（连 Dock 图标一起），App 留在菜单栏继续推送；从菜单栏退出才真的退出。
+func (a *App) beforeClose(ctx context.Context) bool {
+	if a.quitting.Load() {
+		return false
+	}
+	runtime.WindowHide(ctx)
+	tray.SetDockVisible(false)
+	return true
+}
+
+func (a *App) showWindow() {
+	tray.SetDockVisible(true)
+	runtime.WindowShow(a.ctx)
+}
+
+func (a *App) quit() {
+	a.quitting.Store(true)
+	runtime.Quit(a.ctx)
 }
 
 func (a *App) shutdown(context.Context) {
@@ -91,14 +116,22 @@ func (a *App) bootstrapConfig() {
 	}
 }
 
+// stopService 停掉服务并关蓝牙通道。可能在主线程上调用（OnShutdown），
+// 所以先直接关连接，再最多等 2 秒，不能无限等：服务里的蓝牙调用要派发到主线程，会互相卡死。
 func (a *App) stopService() {
 	a.mu.Lock()
-	stop, done := a.stop, a.done
+	svc, stop, done := a.svc, a.stop, a.done
 	a.svc, a.stop, a.done = nil, nil, nil
 	a.mu.Unlock()
-	if stop != nil {
-		stop()
-		<-done
+	if stop == nil {
+		return
+	}
+	stop()
+	svc.Close()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		slog.Warn("等服务退出超时")
 	}
 }
 
@@ -152,6 +185,7 @@ func (a *App) emitState() {
 		if a.ctx != nil {
 			runtime.EventsEmit(a.ctx, "state")
 		}
+		tray.SetInfo(trayText(a.state()))
 	})
 }
 
@@ -162,6 +196,38 @@ func (a *App) service() (*service.Service, error) {
 		return nil, errors.New("还没配置好手环")
 	}
 	return a.svc, nil
+}
+
+// trayText 是菜单栏菜单第一行的状态文字。
+func trayText(st AppState) string {
+	switch {
+	case !st.Configured:
+		return "还没配置手环"
+	case !st.Connected && st.LastError != "":
+		return "连接手环失败，重试中"
+	case !st.Connected:
+		return "正在连接手环…"
+	}
+	var blocked, working int
+	for _, a := range st.Agents {
+		switch a.Status {
+		case "blocked":
+			blocked++
+		case "working":
+			working++
+		}
+	}
+	parts := []string{"已连接"}
+	if blocked > 0 {
+		parts = append(parts, fmt.Sprintf("%d 个等你处理", blocked))
+	}
+	if working > 0 {
+		parts = append(parts, fmt.Sprintf("%d 个在忙", working))
+	}
+	if blocked == 0 && working == 0 {
+		parts = append(parts, "都在休息")
+	}
+	return strings.Join(parts, " · ")
 }
 
 // ---------- 绑定给前端的方法 ----------
