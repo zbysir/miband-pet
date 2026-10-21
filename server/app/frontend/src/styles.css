@@ -713,7 +713,9 @@ code {
     text-align: center;
 }
 
-.wizard-body > p, .wizard-body .tips, .wizard-body .howto, .wizard-body .device, .wizard-body .field {
+/* 向导里的内容块统一宽度并居中，和说明文字对齐 */
+.wizard-body > p, .wizard-body .tips, .wizard-body .howto, .wizard-body .device,
+.wizard-body .field, .wizard-body .device-list, .wizard-body .login-qr {
     max-width: 440px;
     width: 100%;
 }
