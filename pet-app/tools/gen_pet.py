@@ -126,14 +126,21 @@ def draw_cat(d, dy=0, eyes="open", arms="down", tail=0, mouth="smile"):
     # 腮红
     px(d, 13, y + 6, C["pink"])
     px(d, 27, y + 6, C["pink"])
+    # 脚：坐着时露在身体底部两侧，不管手在哪儿都有（手举起来时不至于像没脚）
+    for fx in (11, 25):
+        d.rounded_rectangle((fx, y + 20, fx + 4, y + 23), radius=1, fill=C["line"])
+        rect(d, fx + 1, y + 21, fx + 3, y + 22, C["cream"])
     # 手
     if arms == "down":
         for ax in (14, 24):
-            rect(d, ax, y + 19, ax + 2, y + 21, C["cream"])
+            rect(d, ax, y + 18, ax + 2, y + 20, C["cream"])
     elif arms == "up":
-        for ax, ex in ((9, 8), (29, 30)):
-            rect(d, ax, y + 9, ax + 2, y + 13, C["fur"])
-            rect(d, ex, y + 6, ex + 2, y + 8, C["cream"])
+        # 从肩膀斜着举到头的两侧：深色轮廓的手臂 + 浅色爪子
+        for (sx, sy), (px_, py_) in (((13, y + 12), (8, y + 6)), ((27, y + 12), (32, y + 6))):
+            d.line([(sx, sy), (px_, py_)], fill=C["line"], width=3)
+            d.line([(sx, sy), (px_, py_)], fill=C["fur"], width=1)
+            d.rounded_rectangle((px_ - 2, py_ - 3, px_ + 2, py_ + 1), radius=1, fill=C["line"])
+            rect(d, px_ - 1, py_ - 2, px_ + 1, py_, C["cream"])
     elif isinstance(arms, tuple):  # 打字：(左手抬高, 右手抬高)
         for ax, raised in zip((14, 24), arms):
             ty = y + 17 - (1 if raised else 0)
