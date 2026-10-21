@@ -114,7 +114,6 @@ type Snapshot struct {
 	T      string     `json:"t"`
 	TS     int64      `json:"ts"`
 	Agents []AppAgent `json:"agents"`
-	Pet    string     `json:"pet,omitempty"` // 手环上显示哪只猫：orange / gray / white
 }
 
 func NewSnapshot(agents map[string]Agent) *Snapshot {

@@ -23,6 +23,8 @@ app: quickapps
 	cp -R pet-app/src/common/pet/*/ server/app/frontend/public/pet/
 	rm -f server/app/rpk/*.rpk
 	cp band-app/dist/*.rpk pet-app/dist/*.rpk server/app/rpk/
+	# Agent 猫装到手环前由 App 按选中的猫重新打包、签名，用的就是快应用的调试证书
+	mkdir -p server/app/rpk/sign && cp pet-app/sign/debug/private.pem pet-app/sign/debug/certificate.pem server/app/rpk/sign/
 	cd server/app && $(WAILS) build -clean
 	@if security find-identity -p codesigning | grep -q "$(SIGN_IDENTITY)"; then \
 		codesign --force --deep --identifier dev.bysir.miband-pet -s "$(SIGN_IDENTITY)" "$(APP_BUNDLE)"; \

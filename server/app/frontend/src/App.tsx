@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useMemo, useState} from 'react'
-import {BundledApps, GetState, Install, Launch, SetPet, TestNotify, UpdateSettings} from '../wailsjs/go/main/App'
+import {BundledApps, GetState, Install, Launch, SetKeepAwake, SetPet, TestNotify, UpdateSettings} from '../wailsjs/go/main/App'
 import {EventsOn} from '../wailsjs/runtime/runtime'
 import {Wizard} from './Wizard'
 import {Pet, SKINS, useMood} from './Pet'
@@ -87,6 +87,7 @@ function countBy(agents: Agent[]): Record<Status, number> {
 }
 
 function Hero({state, run}: { state: AppState, run: (label: string, fn: () => Promise<unknown>) => void }) {
+    const installedSkin = state.settings?.petInstalled
     const agents = state.agents ?? []
     const mood = useMood(agents)
     const counts = useMemo(() => countBy(agents), [agents])
@@ -107,18 +108,23 @@ function Hero({state, run}: { state: AppState, run: (label: string, fn: () => Pr
                     ))}
                 </div>
             </div>
-            <SkinPicker current={state.settings?.pet ?? 'orange'} onPick={skin => run('换猫', () => SetPet(skin))}/>
+            <SkinPicker current={state.settings?.pet ?? 'orange'} disabled={!!state.installing}
+                        onPick={skin => run('换猫', () => SetPet(skin))}/>
+            {installedSkin && installedSkin !== state.settings?.pet &&
+                <p className="skin-hint">手环上还是{skinLabel(installedSkin)}，点下面 Agent 猫的「更新」换过去</p>}
         </header>
     )
 }
 
-// 选猫：Mac 界面和手环上的猫一起换
-function SkinPicker({current, onPick}: { current: Skin, onPick: (skin: Skin) => void }) {
+const skinLabel = (skin: Skin) => SKINS.find(s => s.value === skin)?.label ?? skin
+
+// 选猫：Mac 界面马上换；手环上的 Agent 猫只带一只猫，要点「更新」按新选的猫重装
+function SkinPicker({current, disabled, onPick}: { current: Skin, disabled: boolean, onPick: (skin: Skin) => void }) {
     return (
         <div className="skins" role="radiogroup" aria-label="选一只猫">
             {SKINS.map(s => (
                 <button key={s.value} className={`skin ${s.value === current ? 'active' : ''}`}
-                        role="radio" aria-checked={s.value === current} title={s.label}
+                        role="radio" aria-checked={s.value === current} title={s.label} disabled={disabled}
                         onClick={() => s.value !== current && onPick(s.value)}>
                     <img src={`/pet/${s.value}/sleep_0.png`} width={40} height={40} alt=""/>
                     <span>{s.label}</span>
@@ -203,12 +209,16 @@ const ALERT_MODES: { value: AlertMode, label: string, desc: string }[] = [
     {value: 'both', label: '都要', desc: '打开猫并发通知'},
 ]
 
+// 保持亮屏的间隔：手环亮屏最长 60 秒，要比手环上设的亮屏时间短
+const KEEP_AWAKE_SECS = [15, 30, 50]
+
 function SettingsCard({state, run}: { state: AppState, run: (label: string, fn: () => Promise<unknown>) => void }) {
     const s = state.settings
     if (!s) return null
     const save = (notify: boolean, notifyStart: boolean, alert: AlertMode) =>
         run('保存设置', () => UpdateSettings(notify, notifyStart, alert))
     const mode = ALERT_MODES.find(m => m.value === s.alert) ?? ALERT_MODES[0]
+    const keepAwake = (on: boolean, sec: number) => run('保存设置', () => SetKeepAwake(on, sec))
 
     return (
         <section className="card">
@@ -225,6 +235,17 @@ function SettingsCard({state, run}: { state: AppState, run: (label: string, fn: 
                 ))}
             </div>
             <p className="muted small">{mode.desc}</p>
+            <Toggle label="有 agent 等你回答时保持亮屏"
+                    hint={`每隔 ${s.keepAwakeSec} 秒把猫打开一次，手环不熄屏。手环上的亮屏时间要比这个长（最长 60 秒）`}
+                    checked={s.keepAwake} onChange={v => keepAwake(v, s.keepAwakeSec)}/>
+            <div className={`segmented ${s.keepAwake ? '' : 'disabled'}`}>
+                {KEEP_AWAKE_SECS.map(sec => (
+                    <button key={sec} className={sec === s.keepAwakeSec ? 'active' : ''}
+                            onClick={() => keepAwake(true, sec)} disabled={!s.keepAwake}>
+                        每 {sec} 秒
+                    </button>
+                ))}
+            </div>
         </section>
     )
 }

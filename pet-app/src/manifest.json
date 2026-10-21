@@ -1,8 +1,8 @@
 {
   "package": "dev.bysir.herdrpet",
   "name": "Agent 猫",
-  "versionName": "1.1.5",
-  "versionCode": 7,
+  "versionName": "1.1.6",
+  "versionCode": 8,
   "minPlatformVersion": 1200,
   "icon": "/common/logo.png",
   "deviceTypeList": ["watch"],

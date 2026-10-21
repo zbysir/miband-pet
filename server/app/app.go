@@ -22,6 +22,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"miband/internal/micloud"
+	"miband/internal/rpk"
 	"miband/internal/service"
 	"miband/internal/tray"
 	"miband/internal/xiaomi"
@@ -381,7 +382,20 @@ func (a *App) UpdateSettings(notify, notifyStart bool, alert string) error {
 	return cfg.Save(a.cfgPath)
 }
 
-// SetPet 换猫（orange / gray / white），Mac 界面和手环上的猫一起换。
+// SetKeepAwake 改「有 agent 等你回答时保持亮屏」：on 开关，seconds 每隔几秒亮一次屏（5~60）。
+func (a *App) SetKeepAwake(on bool, seconds int) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	cfg := svc.SetKeepAwake(on, seconds)
+	a.mu.Lock()
+	a.cfg = &cfg
+	a.mu.Unlock()
+	return cfg.Save(a.cfgPath)
+}
+
+// SetPet 换猫。Mac 界面马上换；手环上的 Agent 猫只带一只猫，要在 App 里点「更新」按新选的猫重装。
 func (a *App) SetPet(skin string) error {
 	svc, err := a.service()
 	if err != nil {
@@ -439,6 +453,30 @@ func (a *App) BundledApps() []BundledApp {
 	return out
 }
 
+// petPackage 把完整的 Agent 猫安装包改成只带当前选的那只猫，用 make app 复制进来的调试证书重新签名。
+func (a *App) petPackage(full []byte) ([]byte, string, error) {
+	key, err := rpkFS.ReadFile("rpk/sign/private.pem")
+	if err != nil {
+		return nil, "", err
+	}
+	cert, err := rpkFS.ReadFile("rpk/sign/certificate.pem")
+	if err != nil {
+		return nil, "", err
+	}
+	signer, err := rpk.NewSigner(key, cert)
+	if err != nil {
+		return nil, "", err
+	}
+	skin := "orange"
+	a.mu.Lock()
+	if a.cfg != nil {
+		skin = a.cfg.PetSkin()
+	}
+	a.mu.Unlock()
+	data, err := rpk.ForSkin(full, skin, signer)
+	return data, skin, err
+}
+
 func (a *App) extractRpk(name string) (string, error) {
 	data, err := rpkFS.ReadFile("rpk/" + name)
 	if err != nil {
@@ -448,7 +486,7 @@ func (a *App) extractRpk(name string) (string, error) {
 	return path, os.WriteFile(path, data, 0o644)
 }
 
-// Install 把打包进来的快应用装（或更新）到手环上并打开。
+// Install 把打包进来的快应用装（或更新）到手环上并打开。Agent 猫只带选中的那只猫。
 func (a *App) Install(pkg string) error {
 	svc, err := a.service()
 	if err != nil {
@@ -463,8 +501,18 @@ func (a *App) Install(pkg string) error {
 	if file == "" {
 		return fmt.Errorf("App 里没有打包 %s", pkg)
 	}
-	path, err := a.extractRpk(file)
+	data, err := rpkFS.ReadFile("rpk/" + file)
 	if err != nil {
+		return err
+	}
+	skin := ""
+	if pkg == service.PackagePet {
+		if data, skin, err = a.petPackage(data); err != nil {
+			return fmt.Errorf("打包 Agent 猫: %w", err)
+		}
+	}
+	path := filepath.Join(os.TempDir(), "miband-pet-install-"+file)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return err
 	}
 	a.mu.Lock()
@@ -481,10 +529,18 @@ func (a *App) Install(pkg string) error {
 		a.mu.Unlock()
 		a.emitState()
 	}()
-	return svc.Install(path, func(i, n int) {
+	err = svc.Install(path, func(i, n int) {
 		a.mu.Lock()
 		a.progress = float64(i) / float64(n)
 		a.mu.Unlock()
 		a.emitState()
 	})
+	if err != nil || skin == "" {
+		return err
+	}
+	cfg := svc.SetPetInstalled(skin)
+	a.mu.Lock()
+	a.cfg = &cfg
+	a.mu.Unlock()
+	return cfg.Save(a.cfgPath)
 }

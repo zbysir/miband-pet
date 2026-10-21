@@ -20,6 +20,12 @@ type Config struct {
 	Alert string `json:"alert,omitempty"`
 	// 宠物：orange（橘猫，默认）/ gray（灰猫，中华田园猫）/ white（白猫，美短）
 	Pet string `json:"pet,omitempty"`
+	// 最后一次装到手环上的 Agent 猫是哪只猫（换猫后要手动「更新」才会变）
+	PetInstalled string `json:"pet_installed,omitempty"`
+	// 有 agent 等你回答时保持亮屏（默认关）：每隔 KeepAwakeSec 秒（默认 50）把快应用打开一次。
+	// 手环亮屏最长 60 秒，所以间隔要比手环上设的亮屏时间短
+	KeepAwake    bool `json:"keep_awake,omitempty"`
+	KeepAwakeSec int  `json:"keep_awake_sec,omitempty"`
 }
 
 func (c Config) NotifyOn() bool      { return c.Notify == nil || *c.Notify }
@@ -31,6 +37,14 @@ func (c Config) AlertMode() string {
 		return c.Alert
 	}
 	return "auto"
+}
+
+// KeepAwakeSecs 保持亮屏的间隔（秒），限制在 5~60，默认 50。
+func (c Config) KeepAwakeSecs() int {
+	if c.KeepAwakeSec <= 0 {
+		return 50
+	}
+	return min(max(c.KeepAwakeSec, 5), 60)
 }
 
 var Pets = []string{"orange", "gray", "white"}

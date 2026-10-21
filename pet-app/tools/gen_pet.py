@@ -1,5 +1,5 @@
 """手绘像素猫的动作帧，输出到 src/common/pet/<哈希>/<皮肤>/<状态>_<序号>.png，
-目录名写进 src/common/pet/index.js（快应用从这里取路径）。
+目录名写进 src/common/pet/index.js（快应用从这里取路径，默认橘猫）。
 
 猫本身是一张字符格子图（BASE），每个字符一个像素：
   K 轮廓  F 毛色  S 条纹  D 暗部  C 浅色（口鼻、围兜、爪子）  P 粉色  E 眼睛  W 眼睛高光  . 透明
@@ -272,8 +272,9 @@ def main():
         with open(path, "wb") as f:
             f.write(data)
     with open(os.path.join(OUT, "index.js"), "w") as f:
-        f.write("// tools/gen_pet.py 生成，不要手改。帧所在的目录，名字是帧内容的哈希\n")
-        f.write(f"export default '/common/pet/{version}/'\n")
+        f.write("// tools/gen_pet.py 生成，不要手改。帧所在的目录（名字是帧内容的哈希），默认橘猫；\n")
+        f.write("// Mac App 装到手环时只留选中的那只猫，并把这里的 orange 换掉（server/internal/rpk）\n")
+        f.write(f"export default '/common/pet/{version}/orange/'\n")
     print("帧目录:", os.path.join(OUT, version))
 
     if len(sys.argv) > 1:

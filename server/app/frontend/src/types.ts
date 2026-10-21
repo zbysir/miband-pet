@@ -24,6 +24,9 @@ export interface Settings {
     alert: AlertMode
     address: string
     pet: 'orange' | 'gray' | 'white'
+    petInstalled?: 'orange' | 'gray' | 'white' // 最后一次装到手环上的是哪只猫
+    keepAwake: boolean // 有 agent 等你回答时保持亮屏
+    keepAwakeSec: number // 每隔几秒亮一次屏
 }
 
 export interface AppState {

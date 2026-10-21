@@ -125,6 +125,7 @@ type Service struct {
 	lastPush   time.Time
 	events     []EventRecord
 	transport  string
+	lastWake   time.Time // 上次把快应用打开到前台（亮屏）的时间
 
 	dirty chan struct{} // 有新数据要推，或快应用打开了要一份全量
 }
@@ -172,6 +173,7 @@ func New(cfg Config) (*Service, error) {
 func (s *Service) Run(ctx context.Context) error {
 	defer s.dev.Close()
 	go s.pollHerdr(ctx)
+	go s.keepAwake(ctx)
 	s.deliver(ctx)
 	return ctx.Err()
 }
@@ -200,7 +202,8 @@ func (s *Service) State() State {
 		Events:     append([]EventRecord{}, s.events...),
 		Settings: map[string]any{
 			"notify": s.cfg.NotifyOn(), "notifyStart": s.cfg.NotifyStartOn(), "alert": s.cfg.AlertMode(), "address": s.cfg.Address,
-			"pet": s.cfg.PetSkin(),
+			"pet": s.cfg.PetSkin(), "petInstalled": s.cfg.PetInstalled,
+			"keepAwake": s.cfg.KeepAwake, "keepAwakeSec": s.cfg.KeepAwakeSecs(),
 		},
 	}
 	st.Foreground = s.foregroundLocked()
@@ -213,14 +216,34 @@ func (s *Service) State() State {
 	return st
 }
 
-// SetPet 换猫，并马上推给手环。
+// SetPet 换猫（只改设置；手环上的猫要按新选的猫重装 Agent 猫才会变，见 SetPetInstalled）。
 func (s *Service) SetPet(skin string) Config {
 	s.mu.Lock()
 	s.cfg.Pet = skin
 	s.cfg.Pet = s.cfg.PetSkin() // 不认识的值回落到橘猫
 	cfg := s.cfg
 	s.mu.Unlock()
-	s.markDirty()
+	s.changed()
+	return cfg
+}
+
+// SetPetInstalled 记下装到手环上的 Agent 猫是哪只猫。
+func (s *Service) SetPetInstalled(skin string) Config {
+	s.mu.Lock()
+	s.cfg.PetInstalled = skin
+	cfg := s.cfg
+	s.mu.Unlock()
+	s.changed()
+	return cfg
+}
+
+// SetKeepAwake 改「有 agent 等你回答时保持亮屏」的设置。
+func (s *Service) SetKeepAwake(on bool, seconds int) Config {
+	s.mu.Lock()
+	s.cfg.KeepAwake, s.cfg.KeepAwakeSec = on, seconds
+	s.cfg.KeepAwakeSec = s.cfg.KeepAwakeSecs()
+	cfg := s.cfg
+	s.mu.Unlock()
 	s.changed()
 	return cfg
 }
@@ -424,10 +447,48 @@ func (s *Service) deliver(ctx context.Context) {
 	}
 }
 
+// keepAwake：开了「保持亮屏」且有 agent 等你回答时，每隔设定的秒数把快应用打开到前台一次，
+// 手环就不会熄屏。推送提醒时亮过屏也算，不会紧接着再亮一次。
+func (s *Service) keepAwake(ctx context.Context) {
+	tick := time.NewTicker(5 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		s.mu.Lock()
+		on, every := s.cfg.KeepAwake, time.Duration(s.cfg.KeepAwakeSecs())*time.Second
+		due := time.Since(s.lastWake) >= every
+		blocked := false
+		if s.latest != nil {
+			for _, a := range s.latest.Agents {
+				blocked = blocked || a.Status == "blocked"
+			}
+		}
+		pkg := s.foregroundLocked()
+		if pkg == "" && len(s.packages) > 0 {
+			pkg = s.packages[len(s.packages)-1] // 优先宠物版（列表最后一个）
+		}
+		s.mu.Unlock()
+		if !on || !blocked || !due || pkg == "" || !s.dev.Connected() {
+			continue
+		}
+		if err := s.apps.Launch(pkg, ""); err != nil {
+			slog.Warn("保持亮屏失败", "err", err)
+			continue
+		}
+		s.mu.Lock()
+		s.lastWake = time.Now()
+		s.mu.Unlock()
+		slog.Info("保持亮屏", "package", pkg)
+	}
+}
+
 func (s *Service) push(snap *herdr.Snapshot, notes []herdr.Event) error {
 	snap.TS = time.Now().UnixMilli()
 	s.mu.Lock()
-	snap.Pet = s.cfg.PetSkin()
 	packages := append([]string{}, s.packages...)
 	fg := s.foregroundLocked()
 	alert := s.cfg.AlertMode()
@@ -471,6 +532,9 @@ func (s *Service) push(snap *herdr.Snapshot, notes []herdr.Event) error {
 		if err := s.apps.Launch(pkg, ""); err != nil {
 			return err
 		}
+		s.mu.Lock()
+		s.lastWake = time.Now()
+		s.mu.Unlock()
 		slog.Info("亮屏", "package", pkg, "events", len(notes))
 		record("wake")
 		return nil
