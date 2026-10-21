@@ -1,0 +1,156 @@
+// Vela 第三方快应用相关消息：安装 rpk、跟手环上的快应用互发消息。
+// 摘自 OronBox 的 protos/xiaomi/{wear,wear_thirdparty_app,wear_mass,wear_common}.proto，
+// 只保留用得到的部分；字段全改成 optional，免得手环少发字段时解析报错（线格式不受影响）。
+syntax = "proto2";
+
+package vela;
+
+// 跟 xiaomi.proto 的 Command 线格式兼容：1=type，2=id(subtype)
+message VelaPacket {
+  enum Type {
+    THIRDPARTY_APP = 20;
+    MASS = 22;
+  }
+  optional uint32 type = 1;
+  optional uint32 id = 2;
+  optional ThirdpartyApp thirdparty_app = 22;
+  optional Mass mass = 24;
+}
+
+enum PrepareStatus {
+  READY = 0;
+  BUSY = 1;
+  DUPLICATED = 2;
+  LOW_STORAGE = 3;
+  LOW_BATTERY = 4;
+  DOWNGRADE = 5;
+  OP_NOT_SUPPORT = 6;
+  EXCEED_QUANTITY_LIMIT = 7;
+  NETWORK_ERROR = 8;
+  FAILED = 255;
+}
+
+message ThirdpartyApp {
+  enum ThirdpartyAppID {
+    GET_INSTALLED_LIST = 0;
+    PREPARE_INSTALL_APP = 1;
+    REPORT_INSTALL_RESULT = 2;
+    REMOVE_APP = 3;
+    LAUNCH_APP = 4;
+    SYNC_PERMISSION_INFO = 5;
+    REQUEST_PHONE_APP_STATUS = 6;
+    SYNC_PHONE_APP_STATUS = 7;
+    SEND_PHONE_MESSAGE = 8;
+    SEND_WEAR_MESSAGE = 9;
+  }
+
+  oneof payload {
+    AppItemList app_item_list = 1;
+    AppInstallRequest install_request = 2;
+    AppInstallResponse install_response = 3;
+    AppInstallResult install_result = 4;
+    BasicInfo basic_info = 5;
+    LaunchInfo launch_info = 6;
+    PhoneAppStatus app_status = 8;
+    MessageContent message_content = 9;
+  }
+}
+
+message AppItem {
+  optional string package_name = 1;
+  optional bytes fingerprint = 2;
+  optional uint32 version_code = 3;
+  optional bool can_remove = 4;
+  optional string app_name = 5;
+}
+
+message AppItemList {
+  repeated AppItem list = 1;
+}
+
+message AppInstallRequest {
+  optional string package_name = 1;
+  optional uint32 version_code = 2;
+  optional uint32 package_size = 3;
+}
+
+message AppInstallResponse {
+  optional PrepareStatus prepare_status = 1;
+  optional uint32 expected_slice_length = 2;
+}
+
+message AppInstallResult {
+  enum Code {
+    INSTALL_SUCCESS = 0;
+    INSTALL_FAILED = 1;
+    VERIFY_FAILED = 2;
+  }
+  optional Code code = 1;
+  oneof payload {
+    string package_name = 2;
+    AppItem app_item = 3;
+  }
+}
+
+message BasicInfo {
+  optional string package_name = 1;
+  optional bytes fingerprint = 2;
+}
+
+message LaunchInfo {
+  optional BasicInfo basic_info = 1;
+  optional string uri = 2;
+}
+
+message PhoneAppStatus {
+  enum Status {
+    CONNECTED = 1;
+    DISCONNECTED = 2;
+    UNINSTALLED = 3;
+  }
+  optional BasicInfo basic_info = 1;
+  optional Status status = 2;
+}
+
+message MessageContent {
+  optional BasicInfo basic_info = 1;
+  optional bytes content = 2;
+}
+
+message Mass {
+  enum MassID {
+    PREPARE = 0;
+    CONTROL = 1;
+  }
+  oneof payload {
+    PrepareRequest prepare_request = 1;
+    PrepareResponse prepare_response = 2;
+    MassControl mass_control = 3;
+  }
+}
+
+message PrepareRequest {
+  optional uint32 data_type = 1;
+  optional bytes data_id = 2;
+  optional uint32 data_length = 3;
+  optional uint32 support_compress_mode = 4;
+}
+
+message PrepareResponse {
+  optional bytes data_id = 1;
+  optional PrepareStatus prepare_status = 2;
+  optional uint32 select_compress_mode = 3;
+  optional uint32 remained_data_length = 4;
+  optional uint32 expected_slice_length = 5;
+}
+
+message MassControl {
+  enum Op {
+    PAUSE = 1;
+    CANCEL = 2;
+    ERROR = 3;
+  }
+  optional Op op = 1;
+  optional uint32 data_type = 2;
+  optional bytes data_id = 3;
+}

@@ -1,0 +1,365 @@
+<template>
+  <div class="page" style="height: {{pageH}}px" @swipe="onSwipe">
+    <text class="headline headline-{{mood}}">{{headline}}</text>
+
+    <div class="stage" @click="nextAgent">
+      <div class="pet-wrap">
+        <image-animator if="{{mood === 'work'}}" id="pet" class="pet" images="{{frames.work}}" duration="900ms" />
+        <image-animator if="{{mood === 'alert'}}" id="pet" class="pet" images="{{frames.alert}}" duration="700ms" />
+        <image-animator if="{{mood === 'celebrate'}}" id="pet" class="pet" images="{{frames.celebrate}}" duration="800ms" />
+        <image-animator if="{{mood === 'sleep'}}" id="pet" class="pet" images="{{frames.sleep}}" duration="2400ms" />
+      </div>
+    </div>
+
+    <div class="bubble bubble-{{focus ? focus.status : 'none'}}" if="{{focus}}" @click="nextAgent">
+      <text class="bubble-project">{{focus.project}}</text>
+      <text class="bubble-title">{{focus.title}}</text>
+    </div>
+    <text class="hint" if="{{!focus}}">{{connected ? '' : '等待 Mac 连接…'}}</text>
+
+    <div class="dots">
+      <div class="dot-item" if="{{counts.blocked > 0}}">
+        <div class="dot dot-blocked"></div>
+        <text class="dot-num">{{counts.blocked}}</text>
+      </div>
+      <div class="dot-item">
+        <div class="dot dot-working"></div>
+        <text class="dot-num">{{counts.working}}</text>
+      </div>
+      <div class="dot-item">
+        <div class="dot dot-done"></div>
+        <text class="dot-num">{{counts.done}}</text>
+      </div>
+      <div class="dot-item">
+        <div class="dot dot-idle"></div>
+        <text class="dot-num">{{counts.idle}}</text>
+      </div>
+      <div class="dot dot-conn {{connected ? 'dot-conn-ok' : ''}}"></div>
+    </div>
+  </div>
+</template>
+
+<script>
+import interconnect from '@system.interconnect'
+import storage from '@system.storage'
+import device from '@system.device'
+
+const CACHE_KEY = 'pet_cache'
+const CELEBRATE_MS = 8000
+const PRIORITY = { blocked: 0, working: 1, done: 2, idle: 3, unknown: 4 }
+
+function frameList(name, n) {
+  const list = []
+  for (let i = 0; i < n; i++) list.push({ src: '/common/pet/' + name + '_' + i + '.png' })
+  return list
+}
+
+export default {
+  private: {
+    mood: 'sleep',
+    headline: '',
+    focus: null,
+    focusIndex: 0,
+    agents: [],
+    counts: { blocked: 0, working: 0, done: 0, idle: 0 },
+    connected: false,
+    pageH: 360,
+    frames: {
+      work: frameList('work', 6),
+      alert: frameList('alert', 6),
+      celebrate: frameList('celebrate', 6),
+      sleep: frameList('sleep', 8)
+    }
+  },
+
+  onInit() {
+    this.prevStatus = {}
+    this.celebrateUntil = 0
+    this.conn = interconnect.instance()
+    this.conn.onopen = () => {
+      this.connected = true
+      this.send({ t: 'hello' })
+    }
+    this.conn.onclose = () => { this.connected = false }
+    this.conn.onerror = () => { this.connected = false }
+    this.conn.onmessage = (msg) => {
+      let data = msg && msg.data
+      try {
+        if (typeof data === 'string') data = JSON.parse(data)
+      } catch (e) {
+        return
+      }
+      if (data && data.t === 'agents') {
+        this.connected = true
+        this.apply(data.agents || [], true)
+        storage.set({ key: CACHE_KEY, value: JSON.stringify(data.agents || []) })
+      }
+    }
+  },
+
+  onShow() {
+    this.layout()
+    if (this.agents.length === 0) {
+      storage.get({
+        key: CACHE_KEY,
+        success: (v) => {
+          if (!v || this.agents.length > 0) return
+          try { this.apply(JSON.parse(v), false) } catch (e) {}
+        }
+      })
+    }
+    this.restartPet()
+    if (this.connected) this.send({ t: 'hello' })
+  },
+
+  onHide() {
+    clearTimeout(this.celebrateTimer)
+  },
+
+  // 页面右滑退出（系统手势可能被子元素吃掉，自己处理）
+  onSwipe(e) {
+    if (e.direction === 'right') this.$app.exit()
+  },
+
+  onBackPress() {
+    this.$app.exit()
+    return true
+  },
+
+  send(obj) {
+    try {
+      this.conn.send({ data: obj, success: () => {}, fail: () => {} })
+    } catch (e) {}
+  },
+
+  apply(list, live) {
+    const counts = { blocked: 0, working: 0, done: 0, idle: 0 }
+    let justFinished = false
+    const agents = list.map((a) => {
+      const status = PRIORITY[a.status] !== undefined ? a.status : 'unknown'
+      if (counts[status] !== undefined) counts[status]++
+      const before = this.prevStatus[a.id]
+      if (live && before === 'working' && (status === 'done' || status === 'idle')) justFinished = true
+      this.prevStatus[a.id] = status
+      return { id: a.id, project: a.project || a.agent || '?', title: a.title || '', status }
+    })
+    agents.sort((x, y) => PRIORITY[x.status] - PRIORITY[y.status])
+    this.agents = agents
+    this.counts = counts
+    if (justFinished) {
+      this.celebrateUntil = Date.now() + CELEBRATE_MS
+      clearTimeout(this.celebrateTimer)
+      this.celebrateTimer = setTimeout(() => this.updateMood(), CELEBRATE_MS + 50)
+    }
+    this.focusIndex = 0
+    this.updateMood()
+  },
+
+  updateMood() {
+    const c = this.counts
+    let mood = 'sleep'
+    let headline = '都在休息 zZ'
+    if (c.blocked > 0) {
+      mood = 'alert'
+      headline = c.blocked + ' 个等你处理！'
+    } else if (Date.now() < this.celebrateUntil) {
+      mood = 'celebrate'
+      headline = '搞定一个！'
+    } else if (c.working > 0) {
+      mood = 'work'
+      headline = c.working + ' 个在忙'
+    } else if (c.done > 0) {
+      headline = '都完成啦'
+    }
+    this.headline = headline
+    this.pickFocus()
+    if (mood !== this.mood) {
+      this.mood = mood
+      this.restartPet()
+    }
+  },
+
+  // 气泡里显示的 agent：按优先级排好序后，点一下切到下一个（只在同等重要的里面轮换）
+  pickFocus() {
+    const top = this.agents.filter((a) => a.status !== 'idle' && a.status !== 'unknown')
+    const pool = top.length > 0 ? top : this.agents
+    if (pool.length === 0) {
+      this.focus = null
+      return
+    }
+    this.focus = pool[this.focusIndex % pool.length]
+  },
+
+  nextAgent() {
+    this.focusIndex++
+    this.pickFocus()
+  },
+
+  // image-animator 不一定自动播放；切换后等元素创建好再 start
+  restartPet() {
+    setTimeout(() => {
+      try {
+        const el = this.$element('pet')
+        if (el) el.start()
+      } catch (e) {}
+    }, 60)
+  },
+
+  layout() {
+    device.getInfo({
+      success: (info) => {
+        const w = info.screenWidth || 0
+        const h = info.screenHeight || 0
+        if (w > 0 && h > 0) this.pageH = Math.round(h / (w / 212))
+      }
+    })
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 212px;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 10px 0 10px;
+  background-color: #0a0c12;
+}
+
+.headline {
+  width: 192px;
+  height: 26px;
+  lines: 1;
+  font-size: 18px;
+  font-weight: bold;
+  color: #c9ced8;
+  text-align: center;
+}
+
+.headline-alert {
+  color: #ff9f1c;
+}
+
+.headline-work {
+  color: #2ea0ff;
+}
+
+.headline-celebrate {
+  color: #3ddc84;
+}
+
+.stage {
+  width: 192px;
+  height: 166px;
+  margin-top: 4px;
+  justify-content: center;
+  align-items: center;
+}
+
+.pet-wrap {
+  width: 160px;
+  height: 160px;
+}
+
+.pet {
+  width: 160px;
+  height: 160px;
+}
+
+.bubble {
+  width: 192px;
+  height: 62px;
+  margin-top: 6px;
+  padding: 7px 10px;
+  border-radius: 14px;
+  background-color: #16191f;
+  flex-direction: column;
+  border-left-width: 4px;
+  border-left-color: #5c6068;
+}
+
+.bubble-blocked {
+  border-left-color: #ff9f1c;
+}
+
+.bubble-working {
+  border-left-color: #2ea0ff;
+}
+
+.bubble-done {
+  border-left-color: #3ddc84;
+}
+
+.bubble-project {
+  font-size: 14px;
+  font-weight: bold;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.bubble-title {
+  font-size: 12px;
+  color: #8a8f98;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.hint {
+  height: 62px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #5c6068;
+}
+
+.dots {
+  height: 20px;
+  margin-top: 8px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.dot-item {
+  flex-direction: row;
+  align-items: center;
+  margin: 0 6px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  margin-right: 4px;
+}
+
+.dot-num {
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.dot-blocked {
+  background-color: #ff9f1c;
+}
+
+.dot-working {
+  background-color: #2ea0ff;
+}
+
+.dot-done {
+  background-color: #3ddc84;
+}
+
+.dot-idle {
+  background-color: #5c6068;
+}
+
+.dot-conn {
+  margin-left: 8px;
+  background-color: #33363d;
+}
+
+.dot-conn-ok {
+  background-color: #3ddc84;
+}
+</style>

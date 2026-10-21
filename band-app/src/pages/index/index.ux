@@ -1,0 +1,310 @@
+<template>
+  <div class="page" style="height: {{pageH}}px" @swipe="onSwipe">
+    <div class="header">
+      <text class="title">Agents</text>
+      <text class="conn {{connected ? 'conn-ok' : 'conn-bad'}}">{{connected ? '●' : '○'}}</text>
+    </div>
+    <div class="summary">
+      <text class="sum sum-blocked" if="{{counts.blocked > 0}}">{{counts.blocked}} 待处理</text>
+      <text class="sum sum-working">{{counts.working}} 运行</text>
+      <text class="sum sum-done" if="{{counts.done > 0}}">{{counts.done}} 完成</text>
+    </div>
+    <text class="update">{{updateText}}</text>
+
+    <list class="list" style="height: {{listH}}px">
+      <list-item type="agent" for="{{agents}}" class="card">
+        <div class="bar bar-{{$item.status}}"></div>
+        <div class="card-body">
+          <div class="card-head">
+            <text class="project">{{$item.project}}</text>
+            <text class="status status-{{$item.status}}">{{$item.statusText}}</text>
+          </div>
+          <text class="task">{{$item.title}}</text>
+        </div>
+      </list-item>
+    </list>
+
+    <text class="empty" if="{{agents.length === 0}}">{{connected ? '没有 agent' : '等待 Mac 连接…'}}</text>
+  </div>
+</template>
+
+<script>
+import interconnect from '@system.interconnect'
+import storage from '@system.storage'
+import device from '@system.device'
+
+const CACHE_KEY = 'agents_cache'
+const ORDER = { blocked: 0, working: 1, done: 2, idle: 3, unknown: 4 }
+const STATUS_TEXT = { blocked: '待处理', working: '运行中', done: '完成', idle: '空闲', unknown: '未知' }
+
+export default {
+  private: {
+    agents: [],
+    counts: { blocked: 0, working: 0, done: 0 },
+    connected: false,
+    updatedAt: 0,
+    updateText: '',
+    pageH: 300,
+    listH: 200
+  },
+
+  onInit() {
+    this.conn = interconnect.instance()
+    this.conn.onopen = () => {
+      this.connected = true
+      this.send({ t: 'hello' })
+    }
+    this.conn.onclose = () => { this.connected = false }
+    this.conn.onerror = () => { this.connected = false }
+    this.conn.onmessage = (msg) => {
+      let data = msg && msg.data
+      try {
+        if (typeof data === 'string') data = JSON.parse(data)
+      } catch (e) {
+        console.warn('[agents] bad message', e)
+        return
+      }
+      if (data && data.t === 'agents') {
+        this.connected = true
+        this.apply(data.agents || [], data.ts || Date.now())
+        storage.set({ key: CACHE_KEY, value: JSON.stringify({ agents: data.agents, ts: data.ts }) })
+      }
+    }
+  },
+
+  onShow() {
+    this.layout()
+    this.restore()
+    this.tick = setInterval(() => this.refreshUpdateText(), 30000)
+    if (this.connected) this.send({ t: 'hello' })
+  },
+
+  onHide() {
+    clearInterval(this.tick)
+  },
+
+  // 页面里有滚动列表，系统的右滑返回会被它吃掉；在根节点上自己处理
+  onSwipe(e) {
+    if (e.direction === 'right') this.$app.exit()
+  },
+
+  onBackPress() {
+    this.$app.exit()
+    return true
+  },
+
+  send(obj) {
+    try {
+      this.conn.send({ data: obj, success: () => {}, fail: (e, code) => console.warn('[agents] send fail', code) })
+    } catch (e) {
+      console.warn('[agents] send error', e)
+    }
+  },
+
+  restore() {
+    if (this.agents.length > 0) return
+    storage.get({
+      key: CACHE_KEY,
+      success: (v) => {
+        if (!v || this.agents.length > 0) return
+        try {
+          const c = JSON.parse(v)
+          this.apply(c.agents || [], c.ts || 0)
+        } catch (e) {}
+      }
+    })
+  },
+
+  apply(list, ts) {
+    const counts = { blocked: 0, working: 0, done: 0 }
+    const agents = list.map((a) => {
+      const status = STATUS_TEXT[a.status] ? a.status : 'unknown'
+      if (counts[status] !== undefined) counts[status]++
+      return {
+        id: a.id,
+        project: a.project || a.agent || '?',
+        title: a.title || '',
+        status,
+        statusText: STATUS_TEXT[status]
+      }
+    })
+    agents.sort((x, y) => ORDER[x.status] - ORDER[y.status])
+    this.agents = agents
+    this.counts = counts
+    this.updatedAt = ts
+    this.refreshUpdateText()
+  },
+
+  refreshUpdateText() {
+    if (!this.updatedAt) {
+      this.updateText = ''
+      return
+    }
+    const sec = Math.max(0, Math.round((Date.now() - this.updatedAt) / 1000))
+    this.updateText = sec < 60 ? '刚刚更新' : Math.floor(sec / 60) + ' 分钟前更新'
+  },
+
+  layout() {
+    device.getInfo({
+      success: (info) => {
+        const w = info.screenWidth || 0
+        const h = info.screenHeight || 0
+        if (w > 0 && h > 0) {
+          this.pageH = Math.round(h / (w / 212))
+          this.listH = this.pageH - 78
+        }
+      }
+    })
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 212px;
+  padding: 8px;
+  flex-direction: column;
+  background-color: #000000;
+}
+
+.header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  height: 26px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.conn {
+  font-size: 14px;
+}
+
+.conn-ok {
+  color: #3ddc84;
+}
+
+.conn-bad {
+  color: #5c6068;
+}
+
+.summary {
+  flex-direction: row;
+  margin-top: 2px;
+}
+
+.sum {
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+.sum-blocked {
+  color: #ff9f1c;
+}
+
+.sum-working {
+  color: #2ea0ff;
+}
+
+.sum-done {
+  color: #3ddc84;
+}
+
+.update {
+  font-size: 10px;
+  color: #5c6068;
+  margin-top: 1px;
+}
+
+.list {
+  width: 196px;
+  margin-top: 6px;
+}
+
+.card {
+  width: 196px;
+  height: 62px;
+  margin-bottom: 6px;
+  background-color: #16191f;
+  border-radius: 12px;
+  flex-direction: row;
+}
+
+.bar {
+  width: 4px;
+  height: 62px;
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+  background-color: #5c6068;
+}
+
+.bar-blocked {
+  background-color: #ff9f1c;
+}
+
+.bar-working {
+  background-color: #2ea0ff;
+}
+
+.bar-done {
+  background-color: #3ddc84;
+}
+
+.card-body {
+  width: 192px;
+  padding: 7px 9px;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.card-head {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.project {
+  width: 120px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.status {
+  font-size: 11px;
+  color: #8a8f98;
+}
+
+.status-blocked {
+  color: #ff9f1c;
+}
+
+.status-working {
+  color: #2ea0ff;
+}
+
+.status-done {
+  color: #3ddc84;
+}
+
+.task {
+  width: 174px;
+  font-size: 12px;
+  color: #8a8f98;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.empty {
+  margin-top: 30px;
+  font-size: 13px;
+  color: #5c6068;
+  text-align: center;
+}
+</style>

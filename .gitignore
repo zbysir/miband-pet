@@ -1,0 +1,16 @@
+# 敏感信息：手环 auth key、小米账号登录态、扫码登录的二维码
+config.json
+.xiaomi_session.json
+login_qr.png
+
+# 依赖和构建产物
+.venv/
+__pycache__/
+node_modules
+build/
+dist/
+/server/miband
+
+# 本机文件
+.DS_Store
+.claude/settings.local.json
