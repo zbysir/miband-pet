@@ -14,3 +14,10 @@ dist/
 # 本机文件
 .DS_Store
 .claude/settings.local.json
+
+# macOS App：build/ 下的图标和 Info.plist 要提交，构建产物 build/bin 不提交
+!/server/app/build/
+/server/app/build/bin/
+/server/app/rpk/*.rpk
+/server/app/frontend/wailsjs/
+/server/app/frontend/package.json.md5

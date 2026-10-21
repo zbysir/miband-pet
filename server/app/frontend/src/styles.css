@@ -1,0 +1,578 @@
+/* 颜色和手环上的快应用保持一致：待处理橙、运行蓝、完成绿 */
+:root {
+    --bg: #0c0e14;
+    --card: #151922;
+    --card-border: #1f2430;
+    --text: #e8ebf1;
+    --muted: #8a8f98;
+    --hover: #1c212c;
+    --blocked: #ff9f1c;
+    --working: #2ea0ff;
+    --done: #3ddc84;
+    --idle: #5c6068;
+    --danger: #ff6b4a;
+    --accent: #2ea0ff;
+    --switch-off: #3a3f4a;
+    color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg: #f4f5f8;
+        --card: #ffffff;
+        --card-border: #e6e8ee;
+        --text: #1b1e25;
+        --muted: #6b7280;
+        --hover: #f0f2f6;
+        --idle: #a0a5ad;
+        --switch-off: #d4d7de;
+        color-scheme: light;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.app {
+    padding: 0 14px 16px;
+}
+
+/* 横向两栏，各自滚动 */
+.layout {
+    display: grid;
+    grid-template-columns: 330px 1fr;
+    height: 100vh;
+    padding: 0;
+}
+
+.col {
+    overflow-y: auto;
+    padding: 34px 14px 16px;
+}
+
+.col-side {
+    border-right: 1px solid var(--card-border);
+}
+
+.col-main .card:first-child {
+    margin-top: 0;
+}
+
+/* 滚动条：细、悬浮，不占宽度；鼠标移到这一栏上才显示 */
+.col::-webkit-scrollbar {
+    width: 8px;
+}
+
+.col::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.col::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+.col:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+
+/* 隐藏标题栏后，顶部这条用来拖动窗口 */
+.drag {
+    --wails-draggable: drag;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    z-index: 10;
+}
+
+h1 {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 700;
+}
+
+h2 {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+}
+
+.muted {
+    color: var(--muted);
+}
+
+.small {
+    font-size: 11.5px;
+}
+
+.block {
+    display: block;
+}
+
+.error {
+    color: var(--danger);
+    font-size: 12px;
+    margin: 4px 0;
+}
+
+code {
+    font: 12px ui-monospace, Menlo, monospace;
+    background: var(--hover);
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+
+/* ---------- 顶部 ---------- */
+
+.hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 0 2px 6px;
+    text-align: center;
+}
+
+.pet {
+    image-rendering: pixelated;
+    flex: none;
+}
+
+.hero-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.headline-alert {
+    color: var(--blocked);
+}
+
+.headline-work {
+    color: var(--working);
+}
+
+.headline-celebrate {
+    color: var(--done);
+}
+
+.pill {
+    font-size: 11.5px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: var(--hover);
+}
+
+.pill::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: 1px;
+    background: currentColor;
+}
+
+.pill-ok {
+    color: var(--done);
+}
+
+.pill-wait {
+    color: var(--muted);
+}
+
+.pill-bad {
+    color: var(--danger);
+}
+
+.counts {
+    display: flex;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.count {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+}
+
+.dot-blocked {
+    background: var(--blocked);
+}
+
+.dot-working {
+    background: var(--working);
+}
+
+.dot-done {
+    background: var(--done);
+}
+
+.dot-idle, .dot-unknown {
+    background: var(--idle);
+}
+
+/* ---------- 卡片 ---------- */
+
+.card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 12px;
+    margin-top: 10px;
+}
+
+.group + .group {
+    margin-top: 10px;
+}
+
+.group-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.fold {
+    margin-left: auto;
+    font-weight: 400;
+    font-size: 11.5px;
+    cursor: pointer;
+}
+
+.agent {
+    padding: 6px 8px 6px 10px;
+    border-left: 3px solid var(--idle);
+    border-radius: 6px;
+    margin-top: 4px;
+    background: var(--hover);
+}
+
+.agent-blocked {
+    border-left-color: var(--blocked);
+}
+
+.agent-working {
+    border-left-color: var(--working);
+}
+
+.agent-done {
+    border-left-color: var(--done);
+}
+
+.agent-main {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.agent-project {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-kind {
+    color: var(--muted);
+    font-size: 11px;
+    flex: none;
+}
+
+.agent-title {
+    color: var(--muted);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.event {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 0;
+}
+
+.event + .event {
+    border-top: 1px solid var(--card-border);
+}
+
+.event-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.event-text > div {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tag {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 5px;
+    flex: none;
+    margin-top: 1px;
+}
+
+.tag-wake {
+    color: var(--done);
+    background: color-mix(in srgb, var(--done) 15%, transparent);
+}
+
+.tag-notify {
+    color: var(--blocked);
+    background: color-mix(in srgb, var(--blocked) 15%, transparent);
+}
+
+/* ---------- 设置 ---------- */
+
+.toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    cursor: pointer;
+}
+
+.toggle.disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.toggle input {
+    display: none;
+}
+
+.switch {
+    flex: none;
+    position: relative;
+    width: 34px;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--switch-off);
+    transition: background 0.15s;
+}
+
+.switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.15s;
+}
+
+.toggle input:checked + .switch {
+    background: var(--accent);
+}
+
+.toggle input:checked + .switch::after {
+    transform: translateX(14px);
+}
+
+.segmented {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2px;
+    padding: 2px;
+    margin-top: 6px;
+    border-radius: 8px;
+    background: var(--hover);
+}
+
+.segmented.disabled {
+    opacity: 0.5;
+}
+
+.segmented button {
+    border: 0;
+    border-radius: 6px;
+    padding: 5px 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.segmented button.active {
+    background: var(--card);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    font-weight: 600;
+}
+
+/* ---------- 手环应用 ---------- */
+
+.band-app {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 0;
+}
+
+.band-app + .band-app {
+    border-top: 1px solid var(--card-border);
+}
+
+.band-app-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.progress {
+    flex-basis: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--hover);
+    overflow: hidden;
+}
+
+.progress i {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.2s;
+}
+
+/* ---------- 按钮、表单 ---------- */
+
+.btn {
+    border: 1px solid var(--card-border);
+    border-radius: 7px;
+    padding: 5px 11px;
+    background: var(--card);
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+    background: var(--hover);
+}
+
+.btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    padding: 8px 14px;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--accent);
+    filter: brightness(1.08);
+}
+
+.footer {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.footer .small {
+    max-width: 100%;
+}
+
+.footer .small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    max-width: calc(100% - 32px);
+    padding: 7px 14px;
+    border-radius: 8px;
+    background: var(--text);
+    color: var(--bg);
+    font-size: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.setup {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 48px 24px 24px;
+    text-align: center;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    text-align: left;
+}
+
+.field span {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.field input {
+    border: 1px solid var(--card-border);
+    border-radius: 7px;
+    padding: 7px 9px;
+    background: var(--card);
+    color: var(--text);
+    font: 12.5px ui-monospace, Menlo, monospace;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.field input:focus {
+    outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+    border-color: var(--accent);
+}

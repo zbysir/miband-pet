@@ -8,6 +8,18 @@
 
 > 非小米官方项目。用的是逆向出来的非官方协议（移植自 Gadgetbridge、OronBox），风险自负。许可证 AGPL-3.0，致谢见 [NOTICE.md](NOTICE.md)。
 
+## macOS App（server/app/）
+
+日常用 App 就行：打开后在后台连手环、推送 agent 状态，窗口里能看到和手环同步的猫、agent 列表、提醒设置，也能一键安装或更新手环上的两个快应用（安装包已打包进 App）。
+
+```sh
+make app      # 生成 server/app/build/bin/miband pet.app
+```
+
+- Wails v2 + React，界面跑在系统自带的 WKWebView 里，不带 Chromium。
+- 配置在 `~/Library/Application Support/miband-pet/config.json`；第一次打开时如果找不到，会显示填 auth key 和手环地址的页面。
+- App 和命令行版不要同时运行：手环同一时间只接受一个连接。
+
 ## 后端服务（Go，server/）
 
 日常用的是 Go 写的 `server/miband`，蓝牙也在里面（cgo 调 macOS IOBluetooth 开经典蓝牙 RFCOMM）：
