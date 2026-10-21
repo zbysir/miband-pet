@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"miband/internal/micloud"
 	"miband/internal/service"
 	"miband/internal/tray"
 	"miband/internal/xiaomi"
@@ -48,6 +50,8 @@ type App struct {
 	emitDue bool
 
 	quitting atomic.Bool // 从菜单栏“退出”时为 true；否则关窗口只是隐藏
+
+	loginCancel context.CancelFunc // 进行中的扫码登录
 }
 
 func NewApp() *App {
@@ -228,6 +232,78 @@ func trayText(st AppState) string {
 		parts = append(parts, "都在休息")
 	}
 	return strings.Join(parts, " · ")
+}
+
+// ---------- 小米账号：扫码登录拿 auth key ----------
+
+// 登录态缓存：下次拉 key 不用再扫码（手环重新绑定后 key 会变）
+func (a *App) sessionPath() string {
+	return filepath.Join(filepath.Dir(a.cfgPath), "session.json")
+}
+
+// CachedDevices 用缓存的登录态拉账号下的设备；没有缓存或已过期时返回错误，前端改走扫码。
+func (a *App) CachedDevices() ([]micloud.Device, error) {
+	raw, err := os.ReadFile(a.sessionPath())
+	if err != nil {
+		return nil, errors.New("没有登录过")
+	}
+	var s micloud.Session
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	return s.Devices(ctx)
+}
+
+type LoginResult struct {
+	Devices []micloud.Device `json:"devices"`
+	Error   string           `json:"error"`
+}
+
+// StartLogin 拿登录二维码（data URL 返回给前端显示），后台等扫码；结果通过 "login" 事件发给前端。
+func (a *App) StartLogin() (string, error) {
+	a.mu.Lock()
+	if a.loginCancel != nil {
+		a.loginCancel()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	a.loginCancel = cancel
+	a.mu.Unlock()
+
+	login, err := micloud.NewQRLogin(ctx)
+	if err != nil {
+		cancel()
+		return "", err
+	}
+	go func() {
+		defer cancel()
+		res := LoginResult{}
+		session, err := login.Wait(ctx)
+		if err == nil {
+			raw, _ := json.Marshal(session)
+			os.MkdirAll(filepath.Dir(a.sessionPath()), 0o700)
+			os.WriteFile(a.sessionPath(), raw, 0o600)
+			res.Devices, err = session.Devices(context.Background())
+		}
+		if err != nil {
+			if ctx.Err() == context.Canceled {
+				return // 被新的登录取代了
+			}
+			res.Error = err.Error()
+		}
+		runtime.EventsEmit(a.ctx, "login", res)
+	}()
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(login.QRImage), nil
+}
+
+func (a *App) CancelLogin() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.loginCancel != nil {
+		a.loginCancel()
+		a.loginCancel = nil
+	}
 }
 
 // ---------- 绑定给前端的方法 ----------

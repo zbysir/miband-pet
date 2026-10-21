@@ -17,7 +17,19 @@ make app      # 生成 server/app/build/bin/miband pet.app
 ```
 
 - Wails v2 + React，界面跑在系统自带的 WKWebView 里，不带 Chromium。
-- 配置在 `~/Library/Application Support/miband-pet/config.json`；第一次打开时如果找不到，会显示填 auth key 和手环地址的页面。
+- 第一次打开会让你**扫码登录小米账号**，自动从小米健康云拿到手环的 auth key 和地址（不需要 Python）。手环重新绑定后 key 会变，点「重新获取 key」即可，登录态有缓存，一般不用再扫码。
+- 配置和登录态在 `~/Library/Application Support/miband-pet/`（`config.json`、`session.json`，权限 600）。
+- 关掉窗口后 App 留在菜单栏继续推送（菜单栏的猫头图标），从菜单栏「退出」才会真正退出。
+- **签名**：macOS 按“App 标识 + 签名证书”记蓝牙授权。没签名的话每次构建签名都变，每次都会重新弹蓝牙授权。`make app` 会用钥匙串里名为 `miband pet local signing` 的证书签名，建一次即可：
+
+  ```sh
+  openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 3650 -nodes \
+    -subj "/CN=miband pet local signing" -addext "keyUsage=critical,digitalSignature" \
+    -addext "extendedKeyUsage=critical,codeSigning" -addext "basicConstraints=critical,CA:false"
+  openssl pkcs12 -export -legacy -inkey key.pem -in cert.pem -out cert.p12 -passout pass:tmp
+  security import cert.p12 -k ~/Library/Keychains/login.keychain-db -P tmp -T /usr/bin/codesign
+  rm key.pem cert.pem cert.p12
+  ```
 - App 和命令行版不要同时运行：手环同一时间只接受一个连接。
 
 ## 后端服务（Go，server/）
@@ -30,6 +42,7 @@ server/miband app                 # 常驻：推 agent 列表给快应用；agen
 server/miband notify 标题 正文     # 发一条通知
 server/miband apps                # 列出手环上的快应用
 server/miband launch [包名]        # 把快应用打开到前台（默认宠物版），手环会亮屏
+server/miband key                 # 扫码登录小米账号，拉手环的 auth key 和地址写进 ./config.json
 server/miband install pet-app/dist/dev.bysir.herdrpet.debug.1.0.0.rpk
 ```
 
@@ -49,12 +62,12 @@ server/miband install pet-app/dist/dev.bysir.herdrpet.debug.1.0.0.rpk
 - 也不能在派发到主队列的块里等这个回调（回调同样走主队列，会死锁）；结果通过 cgo 回调通知 Go。
 - 通道没关就退出会让手环那边卡住，所以程序退出前一定关通道。
 
-Python 版（`main.py` 等）是最早的实现，留作参考；`get_key.py` 和 `pet-app/tools/gen_pet.py` 是一次性工具，仍用 Python。
+Python 版（`main.py`、`get_key.py` 等）是最早的实现，留作参考；画猫的 `pet-app/tools/gen_pet.py` 仍用 Python。
 
 ## 准备（以手环 10 Pro 为例，实测可用）
 
 1. 手机上用小米运动健康扫手环的绑定二维码，正常绑定一次。这是唯一需要手机的一步。
-2. 拉 key：`.venv/bin/python get_key.py`。它会弹出二维码，用手机扫码登录小米账号，然后从小米健康云拉设备的 `encrypt_key`，连同 MAC 写进 `config.json`。登录态缓存在 `.xiaomi_session.json`，下次不用再扫码。
+2. 拉 key：在 App 里扫码登录，或者用命令行 `server/miband key`。它从小米健康云拉设备的 `encrypt_key`，连同 MAC 写进配置；登录态有缓存，下次不用再扫码。（`get_key.py` 是早期的 Python 版，留作参考。）
 3. 让手环脱离手机：在手机**系统蓝牙**里取消配对手环，再关掉手机蓝牙。不要在 App 里解绑，解绑后 key 会作废。
 4. 首次接管：手环停在「连接新设备」的二维码界面时会广播 BLE，跑 `transport: "ble2"` 连一次，鉴权成功后 Mac 会和手环完成系统层配对。
 5. 之后把 `transport` 改成 `spp`（经典蓝牙），日常都走这个。连不上时重启一次手环。

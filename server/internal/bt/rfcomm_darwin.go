@@ -3,7 +3,7 @@ package bt
 
 /*
 #cgo CFLAGS: -x objective-c -fobjc-arc
-#cgo LDFLAGS: -framework Foundation -framework IOBluetooth
+#cgo LDFLAGS: -framework Foundation -framework IOBluetooth -framework CoreBluetooth
 #include <stdlib.h>
 #include "rfcomm_darwin.h"
 */
@@ -131,3 +131,18 @@ func goRfcommClosed(h C.uintptr_t) {
 		c.OnClosed()
 	}
 }
+
+// Authorization 是本 App 的蓝牙授权状态（CBManagerAuthorization）。
+type Authorization int
+
+const (
+	AuthNotDetermined Authorization = 0
+	AuthRestricted    Authorization = 1
+	AuthDenied        Authorization = 2
+	AuthAllowed       Authorization = 3
+)
+
+func GetAuthorization() Authorization { return Authorization(C.bt_authorization()) }
+
+// RequestAuthorization 触发系统的蓝牙授权弹窗（异步，不阻塞）。
+func RequestAuthorization() { C.bt_request_authorization() }

@@ -2,6 +2,7 @@
 
 #import <Foundation/Foundation.h>
 #import <IOBluetooth/IOBluetooth.h>
+#import <CoreBluetooth/CoreBluetooth.h>
 #include "rfcomm_darwin.h"
 #include "_cgo_export.h"
 
@@ -134,5 +135,34 @@ void bt_close(void) {
             [gConn.device closeConnection];
         }
         gConn = nil;
+    });
+}
+
+// ---------- 蓝牙授权 ----------
+// 没授权时 IOBluetooth 调用会一直阻塞到用户点完系统弹窗，而我们的调用跑在主线程上，界面就卡死了。
+// 所以先用 CoreBluetooth 查授权状态；还没决定时创建 CBCentralManager 触发弹窗（异步，不阻塞）。
+
+@interface MBAuthDelegate : NSObject <CBCentralManagerDelegate>
+@end
+
+@implementation MBAuthDelegate
+- (void)centralManagerDidUpdateState:(CBCentralManager *)central {
+}
+@end
+
+static CBCentralManager *gAuthManager;
+static MBAuthDelegate *gAuthDelegate;
+
+// 0 未决定，1 受限，2 拒绝，3 允许（CBManagerAuthorization）
+int bt_authorization(void) {
+    return (int)[CBManager authorization];
+}
+
+void bt_request_authorization(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (gAuthManager == nil) {
+            gAuthDelegate = [MBAuthDelegate new];
+            gAuthManager = [[CBCentralManager alloc] initWithDelegate:gAuthDelegate queue:nil];
+        }
     });
 }

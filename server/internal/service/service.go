@@ -275,7 +275,30 @@ func (s *Service) refreshApps() error {
 	return nil
 }
 
+// waitAuthorized 等蓝牙授权。没授权时去碰 IOBluetooth 会阻塞到用户点完弹窗（还卡住主线程），所以先等。
+func (s *Service) waitAuthorized(ctx context.Context) bool {
+	for ctx.Err() == nil {
+		switch bt.GetAuthorization() {
+		case bt.AuthAllowed:
+			return true
+		case bt.AuthNotDetermined:
+			bt.RequestAuthorization()
+			s.setErr(errors.New("请在系统弹窗里允许 miband pet 使用蓝牙"))
+		default:
+			s.setErr(errors.New("没有蓝牙权限：到 系统设置 → 隐私与安全性 → 蓝牙 里允许 miband pet"))
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(time.Second):
+		}
+	}
+	return false
+}
+
 func (s *Service) ensureConnected(ctx context.Context) {
+	if !s.waitAuthorized(ctx) {
+		return
+	}
 	for !s.dev.Connected() && ctx.Err() == nil {
 		err := s.dev.Connect()
 		if err == nil {

@@ -12,10 +12,20 @@ quickapps:
 	cd band-app && npm install --no-audit --no-fund && npx aiot build
 	cd pet-app && npx aiot build
 
+# 本机签名证书（名字见 SIGN_IDENTITY）。macOS 按“标识 + 证书”记蓝牙授权：
+# 不签名的话每次构建签名都变，每次都会重新弹蓝牙授权。证书怎么建见 README。
+SIGN_IDENTITY ?= miband pet local signing
+APP_BUNDLE = server/app/build/bin/miband pet.app
+
 app: quickapps
 	rm -f server/app/rpk/*.rpk
 	cp band-app/dist/*.rpk pet-app/dist/*.rpk server/app/rpk/
 	cd server/app && $(WAILS) build -clean
+	@if security find-identity -p codesigning | grep -q "$(SIGN_IDENTITY)"; then \
+		codesign --force --deep --identifier dev.bysir.miband-pet -s "$(SIGN_IDENTITY)" "$(APP_BUNDLE)"; \
+	else \
+		echo "没找到签名证书「$(SIGN_IDENTITY)」，App 未签名：每次构建后都会重新弹蓝牙授权"; \
+	fi
 
 cli:
 	cd server && go build -o miband ./cmd/miband

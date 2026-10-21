@@ -5,6 +5,7 @@
 //	miband apps                列出手环上的第三方快应用
 //	miband install <rpk>       安装快应用并打开
 //	miband launch [包名]        打开快应用（默认宠物版）
+//	miband key                 扫码登录小米账号，拉手环的 auth key 和地址写进配置
 //
 // 配置 config.json：{"auth_key": "0x…", "address": "AA:BB:CC:DD:EE:FF", "notify": true, "notify_start": true, "alert": "auto"}
 package main
@@ -35,7 +36,7 @@ func run() int {
 	configPath := flag.String("config", "", "配置文件路径（默认找 ./config.json，再找可执行文件上一级目录）")
 	verbose := flag.Bool("v", false, "打印调试日志")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "用法: miband [-config path] [-v] <app|notify|apps|install|launch> ...")
+		fmt.Fprintln(os.Stderr, "用法: miband [-config path] [-v] <app|notify|apps|install|launch|key> ...")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -49,6 +50,13 @@ func run() int {
 	if len(args) == 0 {
 		flag.Usage()
 		return 2
+	}
+	if args[0] == "key" {
+		// 不需要已有配置：拉到 key 后写配置
+		if err := runKey(*configPath); err != nil {
+			fatal(err)
+		}
+		return 0
 	}
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
