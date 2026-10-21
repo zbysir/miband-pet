@@ -37,7 +37,7 @@ func runKey(configPath string) error {
 			return err
 		}
 		exec.Command("open", png).Run()
-		fmt.Println("二维码已打开，用登录了同一个小米账号的手机扫码确认（5 分钟内有效）")
+		fmt.Println("二维码已打开：用手机相机或系统「扫一扫」扫码，在手机上确认登录小米账号（不要用小米运动健康扫，5 分钟内有效）")
 		wctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
 		session, err := login.Wait(wctx)

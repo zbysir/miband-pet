@@ -61,7 +61,7 @@ export function LoginPanel({tryCache, onDone}: { tryCache: boolean, onDone: () =
             return (
                 <div className="login-qr">
                     <img src={phase.image} width={180} height={180} alt="登录二维码"/>
-                    <p className="muted small">用手机上登录了同一小米账号的「小米运动健康」或系统「扫一扫」扫码，在手机上确认登录。二维码 5 分钟内有效。</p>
+                    <p className="muted small">用手机<b>相机</b>或系统<b>「扫一扫」</b>扫码（小米手机直接用相机），然后在手机上确认登录小米账号。不要用小米运动健康扫，它不认这个码。二维码 5 分钟内有效。</p>
                 </div>
             )
         case 'error':
