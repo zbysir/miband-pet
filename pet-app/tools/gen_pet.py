@@ -1,9 +1,13 @@
-"""用代码画像素风宠物（猫）的动作帧，输出到 src/common/pet/<皮肤>/<状态>_<序号>.png。
+"""手绘像素猫的动作帧，输出到 src/common/pet/<皮肤>/<状态>_<序号>.png。
 
-在 40x40 的像素网格上画，再按最近邻放大 SCALE 倍，保持像素颗粒感。
-皮肤：orange（橘猫）、gray（灰猫，中华田园猫）、white（白猫，美短）；动作帧共用，只换配色和花纹。
-状态：work（干活）、alert（等你处理）、celebrate（庆祝）、sleep（睡觉）。
-改形象只改这个文件，然后重新跑：.venv/bin/python pet-app/tools/gen_pet.py [预览图.png]
+猫本身是一张字符格子图（BASE），每个字符一个像素：
+  K 轮廓  F 毛色  S 条纹  D 暗部  C 浅色（口鼻、围兜、爪子）  P 粉色  E 眼睛  W 眼睛高光  . 透明
+表情、摇尾巴都是在格子图上替换几个格子；牌子、Z、彩纸、笔记本这些道具用代码画在上面。
+画布 40×40 格，按最近邻放大 SCALE 倍。三种猫共用格子图，只换配色。
+怎么画、踩过哪些坑见 docs/pixel-cat.md。
+
+    .venv/bin/python pet-app/tools/gen_pet.py [预览图.png]
+    PET_OUT=/tmp/pet .venv/bin/python pet-app/tools/gen_pet.py   # 先输出到别的目录预览
 """
 
 import os
@@ -14,16 +18,65 @@ from PIL import Image, ImageDraw
 
 GRID = 40
 SCALE = 4
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "common", "pet")
+OUT = os.environ.get("PET_OUT") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "common", "pet")
 
+# 坐着的猫，正面（28 列 × 28 行），左右对称（第 c 列 ↔ 第 24-c 列），尾巴在右边。
+# 第 0~17 行是头，21 格宽（第 2~22 列）：小耳朵，耳朵内侧斜线直接接到平的头顶（中间不要拱起）；
+# 两侧上下都往里收一点（圆）；额头三道纹；大白口鼻。
+# 第 18~27 行是身体，最宽 19 格（第 3~21 列），比头窄：身体和头一样宽就显胖。
+BASE = """
+....K...............K.......
+....KK.............KK.......
+....KFK...........KFK.......
+....KFFKKKKKKKKKKKFFK.......
+....KFFFFFSFSFSFFFFFK.......
+...KFFFFFFSFSFSFFFFFFK......
+...KFFFFFFSFSFSFFFFFFK......
+..KFFFFFFFSFFFSFFFFFFFK.....
+..KFFFFFFFFFFFFFFFFFFFK.....
+..KFFFFFFFFFFFFFFFFFFFK.....
+..KSSFFFFFFFFFFFFFFFSSK.....
+..KFFFFFFFCPPPCFFFFFFFK.....
+..KSSPFFFCCCCCCCFFFPSSK.....
+..KFFFFFCCCCCCCCCFFFFFK.....
+...KFFFFCCCCCCCCCFFFFK......
+....KFFFFCCCCCCCFFFFK.......
+.....KKFFFCCCCCFFFKK........
+.....KKKKKKKKKKKKKKK........
+.....KFFFFFFFFFFFFFK........
+.....KFFFCCCCCCCFFFK........
+....KFFFCCCCCCCCCFFFK.......
+....KFFFFCCCCCCCFFFFK...KK..
+...KSFFFFCCCCCCCFFFFSK.KFFK.
+...KFFFFFFCCCCCFFFFFFK.KFK..
+...KSDFFFFFCCCFFFFFDSKKFK...
+...KDDFFKKKKFKKKKFFDDFFFK...
+...KDDFKCCCCKCCCCKFDDFFK....
+....KKKKKKKKKKKKKKKKKKK.....
+""".strip("\n").split("\n")
+
+# 眼睛（左眼占第 6~8 列，右眼第 16~18 列；第 7~10 行）。每种表情给出左眼 3 列 × 4 行，右眼照抄（高光都在左上）
+EYES = {
+    "open": ["FFF", "WEE", "EEE", "EEE"],
+    "wide": ["WEE", "WEE", "EEE", "EEE"],   # 更高的眼睛：吃惊
+    "focus": ["FFF", "FFF", "EEE", "EEE"],  # 往下看屏幕
+    "happy": ["FFF", "FFF", "FEF", "EFE"],  # ^ ^
+    "closed": ["FFF", "FFF", "EEE", "FFF"],  # 闭眼的一道线
+}
+# 嘴（第 12~14 行，第 11~13 列，在白色口鼻部里）
+MOUTHS = {
+    "smile": ["CKC", "KCK", "CCC"],  # ω
+    "open": ["CCC", "KKK", "KKK"],
+}
+# 尾巴的另一个位置（摇尾巴用，尾巴尖往右偏一格），覆盖第 21~23 行、第 23~27 列
+TAIL_B = [
+    "..KK.",
+    ".KFFK",
+    "KFK..",
+]
+
+# 道具和配色
 C = {
-    "line": (59, 35, 20),
-    "fur": (255, 159, 67),
-    "stripe": (214, 110, 32),
-    "cream": (255, 232, 204),
-    "pink": (255, 122, 162),
-    "eye": (20, 20, 24),
-    "shine": (255, 255, 255),
     "laptop": (120, 128, 140),
     "laptop_dark": (70, 76, 86),
     "screen": (46, 160, 255),
@@ -33,139 +86,80 @@ C = {
     "stick": (150, 100, 60),
     "z": (140, 170, 255),
 }
-BASE = dict(C)
-
-# 每种猫只写和橘猫不一样的颜色；tabby=True 时额外画身体两侧和脸颊的条纹
 SKINS = {
-    "orange": {},
-    "gray": {  # 中华田园猫：灰色虎斑
-        "line": (36, 38, 44),
-        "fur": (150, 152, 160),
-        "stripe": (84, 86, 96),
-        "cream": (226, 226, 230),
-        "tabby": True,
-    },
-    "white": {  # 美短：银白底色，深色粗条纹
-        "line": (52, 54, 62),
-        "fur": (232, 233, 238),
-        "stripe": (70, 72, 82),
-        "cream": (255, 255, 255),
-        "tabby": True,
-    },
+    "orange": {"K": (59, 35, 20), "F": (255, 159, 67), "S": (214, 110, 32), "D": (230, 135, 50),
+               "C": (255, 236, 210), "P": (255, 130, 168), "E": (30, 22, 18), "W": (255, 255, 255)},
+    "gray": {"K": (36, 38, 44), "F": (150, 152, 160), "S": (92, 94, 104), "D": (128, 130, 138),
+             "C": (228, 228, 232), "P": (255, 130, 168), "E": (24, 24, 28), "W": (255, 255, 255)},
+    "white": {"K": (52, 54, 62), "F": (236, 237, 241), "S": (88, 90, 100), "D": (210, 212, 220),
+              "C": (255, 255, 255), "P": (255, 130, 168), "E": (24, 24, 28), "W": (255, 255, 255)},
 }
-
 CONFETTI = [(255, 99, 132), (61, 220, 132), (46, 160, 255), (255, 206, 86), (186, 104, 255)]
 
+# 猫在 40×40 画布上的位置（格子图左上角）
+X0, Y0 = 8, 10
 
-def px(d, x, y, color):
-    d.point((x, y), fill=color)
+
+def cat_grid(eyes="open", mouth="smile", tail="a"):
+    g = [list(r) for r in BASE]
+
+    def put(r, c, ch):
+        if 0 <= r < len(g):
+            while c >= len(g[r]):
+                g[r].append(".")
+            if c >= 0:
+                g[r][c] = ch
+
+    for i, row in enumerate(EYES[eyes]):
+        for j, ch in enumerate(row):
+            put(7 + i, 6 + j, ch)
+            put(7 + i, 16 + j, ch)
+    for i, row in enumerate(MOUTHS[mouth]):
+        for j, ch in enumerate(row):
+            put(12 + i, 11 + j, ch)
+    if tail == "b":
+        for i, row in enumerate(TAIL_B):
+            for j, ch in enumerate(row):
+                put(21 + i, 23 + j, ch)
+    return g
+
+
+def paste(img, g, dx=0, dy=0, pal=None):
+    for r, row in enumerate(g):
+        for c, ch in enumerate(row):
+            if ch in pal:
+                x, y = X0 + c + dx, Y0 + r + dy
+                if 0 <= x < GRID and 0 <= y < GRID:
+                    img.putpixel((x, y), pal[ch] + (255,))
 
 
 def rect(d, x0, y0, x1, y1, color):
     d.rectangle((x0, y0, x1, y1), fill=color)
 
 
-def draw_cat(d, dy=0, eyes="open", arms="down", tail=0, mouth="smile"):
-    """坐着的橘猫，身体中心约在 x=20。dy 整体上下偏移。"""
-    y = 14 + dy
-    # 尾巴（身后右侧，tail 控制摆动）
-    for i, (tx, ty) in enumerate([(29, y + 18), (30, y + 17), (31, y + 16), (31 + tail, y + 15), (31 + tail, y + 14)]):
-        rect(d, tx, ty, tx + 1, ty + 1, C["stripe"] if i % 2 else C["fur"])
-    # 身体
-    d.ellipse((11, y + 9, 29, y + 23), fill=C["line"])
-    d.ellipse((12, y + 10, 28, y + 22), fill=C["fur"])
-    if C.get("tabby"):
-        # 虎斑：身体两侧的横条纹
-        for k in (y + 12, y + 15, y + 18):
-            rect(d, 13, k, 15, k, C["stripe"])
-            rect(d, 25, k, 27, k, C["stripe"])
-    d.ellipse((16, y + 13, 24, y + 21), fill=C["cream"])  # 肚子不要盖住底部轮廓，不然像肚子突出去
-    # 耳朵
-    for ex, flip in ((12, 1), (28, -1)):
-        d.polygon([(ex, y - 6), (ex + 5 * flip, y - 1), (ex, y + 1)], fill=C["line"])
-        d.polygon([(ex + flip, y - 4), (ex + 4 * flip, y - 1), (ex + flip, y)], fill=C["fur"])
-        px(d, ex + 2 * flip, y - 1, C["pink"])
-    # 头
-    d.rounded_rectangle((10, y - 3, 30, y + 11), radius=5, fill=C["line"])
-    d.rounded_rectangle((11, y - 2, 29, y + 10), radius=4, fill=C["fur"])
-    # 额头条纹
-    for sx in (18, 20, 22):
-        rect(d, sx, y - 2, sx, y, C["stripe"])
-    if C.get("tabby"):
-        # 虎斑：额头条纹更长，脸颊两侧各两道
-        for sx in (18, 22):
-            rect(d, sx, y + 1, sx, y + 1, C["stripe"])
-        for cy in (y + 4, y + 6):
-            rect(d, 11, cy, 12, cy, C["stripe"])
-            rect(d, 28, cy, 29, cy, C["stripe"])
-    # 口鼻
-    d.ellipse((16, y + 5, 24, y + 10), fill=C["cream"])
-    rect(d, 19, y + 5, 21, y + 5, C["pink"])
-    if mouth == "open":
-        rect(d, 19, y + 7, 21, y + 8, C["line"])
-    else:
-        px(d, 19, y + 7, C["line"])
-        px(d, 21, y + 7, C["line"])
-        px(d, 20, y + 6, C["line"])
-    # 眼睛
-    for ex in (14, 24):
-        if eyes == "open":
-            rect(d, ex, y + 2, ex + 2, y + 4, C["eye"])
-            px(d, ex, y + 2, C["shine"])
-        elif eyes == "wide":
-            rect(d, ex, y + 1, ex + 2, y + 4, C["eye"])
-            rect(d, ex, y + 1, ex, y + 2, C["shine"])
-        elif eyes == "happy":  # ^ ^
-            px(d, ex, y + 4, C["eye"])
-            px(d, ex + 1, y + 3, C["eye"])
-            px(d, ex + 2, y + 4, C["eye"])
-        elif eyes == "closed":
-            rect(d, ex, y + 3, ex + 2, y + 3, C["eye"])
-        elif eyes == "focus":  # 半睁，盯屏幕
-            rect(d, ex, y + 3, ex + 2, y + 4, C["eye"])
-    # 腮红
-    px(d, 13, y + 6, C["pink"])
-    px(d, 27, y + 6, C["pink"])
-    # 脚：底部左右两侧的浅色小爪子，带一圈深色细轮廓（白猫、灰猫的肚子也是浅色，不描边就看不见）。
-    # 手举起来时也保留，不然底下空了像没脚
-    if arms in ("down", "up"):
-        # 脚的底边和身体最底下一行（轮廓 y+23）对齐，坐着时底部是一条平线，不会像肚子垂下来
-        for fx in (12, 24):
-            d.rounded_rectangle((fx, y + 20, fx + 4, y + 23), radius=1, fill=C["line"])
-            rect(d, fx + 1, y + 21, fx + 3, y + 22, C["cream"])
-    # 手
-    if arms == "up":
-        # 从肩膀斜着举到头的两侧：深色轮廓的手臂 + 浅色爪子
-        # 欢呼：粗手臂从肩膀往外上方举，爪子在头的斜上方
-        for flip in (1, -1):
-            cx = 20 - 9 * flip  # 肩膀在身体两侧
-            arm = [(cx, y + 13), (cx - 2 * flip, y + 13), (cx - 5 * flip, y + 4), (cx - 3 * flip, y + 4)]
-            d.polygon(arm, fill=C["line"])
-            inner = [(cx, y + 12), (cx - 1 * flip, y + 12), (cx - 4 * flip, y + 5), (cx - 3 * flip, y + 5)]
-            d.polygon(inner, fill=C["fur"])
-            # 爪子：圆一点的小手套（太小会像十字）
-            pxx = cx - 4 * flip
-            d.rounded_rectangle((pxx - 2, y + 1, pxx + 2, y + 5), radius=2, fill=C["line"])
-            rect(d, pxx - 1, y + 2, pxx + 1, y + 4, C["cream"])
-    elif isinstance(arms, tuple):  # 打字：(左手抬高, 右手抬高)
-        for ax, raised in zip((14, 24), arms):
-            ty = y + 17 - (1 if raised else 0)
-            rect(d, ax, ty, ax + 2, ty + 2, C["cream"])
-
-
 def draw_laptop(d, glow):
-    # 笔记本放在猫面前偏下，露出敲键盘的爪子
     rect(d, 11, 33, 29, 34, C["laptop_dark"])
     rect(d, 12, 35, 28, 37, C["laptop"])
     rect(d, 13, 35, 27, 36, C["screen"] if glow else C["screen_dim"])
     rect(d, 9, 38, 31, 39, C["laptop_dark"])
 
 
+def draw_typing_paws(img, left_up, pal):
+    # 敲键盘的两只爪子，搭在笔记本上沿
+    for x, up in ((14, left_up), (23, not left_up)):
+        y = 31 - (1 if up else 0)
+        for dx in range(4):
+            img.putpixel((x + dx, y), pal["K"] + (255,))
+            img.putpixel((x + dx, y + 1), pal["C"] + (255,))
+        img.putpixel((x - 1, y + 1), pal["K"] + (255,))
+        img.putpixel((x + 4, y + 1), pal["K"] + (255,))
+
+
 def draw_sign(d, dy, wobble):
-    x = 30 + wobble
-    y = 2 + dy
+    x = 32 + wobble
+    y = 3 + dy  # 跳到最高（dy=-3）时牌子上沿刚好在画布顶部
     rect(d, x + 2, y + 8, x + 3, y + 20, C["stick"])
-    d.rounded_rectangle((x - 2, y, x + 7, y + 9), radius=2, fill=C["line"])
+    d.rounded_rectangle((x - 2, y, x + 7, y + 9), radius=2, fill=(40, 30, 20))
     d.rounded_rectangle((x - 1, y + 1, x + 6, y + 8), radius=1, fill=C["sign"])
     rect(d, x + 2, y + 2, x + 3, y + 5, C["sign_text"])
     rect(d, x + 2, y + 7, x + 3, y + 7, C["sign_text"])
@@ -173,80 +167,76 @@ def draw_sign(d, dy, wobble):
 
 def draw_z(d, x, y, size):
     for i in range(size):
-        px(d, x + i, y, C["z"])
-        px(d, x + i, y + size - 1, C["z"])
-        px(d, x + size - 1 - i, y + i, C["z"])
+        d.point((x + i, y), fill=C["z"])
+        d.point((x + i, y + size - 1), fill=C["z"])
+        d.point((x + size - 1 - i, y + i), fill=C["z"])
 
 
-def frame(draw_fn):
-    img = Image.new("RGBA", (GRID, GRID), (0, 0, 0, 0))
-    draw_fn(ImageDraw.Draw(img))
+def new_frame():
+    return Image.new("RGBA", (GRID, GRID), (0, 0, 0, 0))
+
+
+def finish(img):
     return img.resize((GRID * SCALE, GRID * SCALE), Image.NEAREST)
 
 
-def work_frames():
+def work_frames(pal):
     out = []
     for i in range(6):
-        def f(d, i=i):
-            draw_cat(d, dy=1 + (1 if i in (2, 3) else 0), eyes="focus", arms=(i % 2 == 0, i % 2 == 1), tail=i % 2)
-            draw_laptop(d, glow=i % 3 != 2)
-        out.append(frame(f))
+        img = new_frame()
+        paste(img, cat_grid(eyes="focus", tail="b" if i % 2 else "a"), dy=1 if i in (2, 3) else 0, pal=pal)
+        draw_laptop(ImageDraw.Draw(img), glow=i % 3 != 2)
+        draw_typing_paws(img, i % 2 == 0, pal)
+        out.append(finish(img))
     return out
 
 
-def alert_frames():
-    hops = [0, -3, -5, -3, 0, 0]
+def alert_frames(pal):
     out = []
-    for i, dy in enumerate(hops):
-        def f(d, i=i, dy=dy):
-            draw_cat(d, dy=dy, eyes="wide", arms="down", tail=1 if i % 2 else -1, mouth="open")
-            draw_sign(d, dy, wobble=1 if i % 2 else 0)
-        out.append(frame(f))
+    for i, dy in enumerate([0, -2, -3, -2, 0, 0]):
+        img = new_frame()
+        paste(img, cat_grid(eyes="wide", mouth="open", tail="b" if i % 2 else "a"), dy=dy, pal=pal)
+        draw_sign(ImageDraw.Draw(img), dy, wobble=1 if i % 2 else 0)
+        out.append(finish(img))
     return out
 
 
-def celebrate_frames():
+def celebrate_frames(pal):
     rnd = random.Random(7)
     out = []
-    for i in range(6):
-        bits = [(rnd.choice([rnd.randrange(1, 9), rnd.randrange(31, 38)]) if j % 2 else rnd.randrange(2, 37), rnd.randrange(0, 7), rnd.choice(CONFETTI)) for j in range(14)]
-        def f(d, i=i, bits=bits):
-            draw_cat(d, dy=-2 if i % 2 else 0, eyes="happy", arms="up" if i % 2 == 0 else "down", tail=1, mouth="open")
-            for x, y, c in bits:
-                fy = y + (i * 3) % 9  # 彩纸往下飘，只在头顶上方和身体两侧
-                rect(d, x, fy, x + 1, fy, c)
-        out.append(frame(f))
+    # 不举手：跳起来 + ^ ^ + 张嘴 + 彩纸。手往外伸在这么小的画布上怎么画都突兀
+    for i, dy in enumerate([0, -1, -2, -1, 0, 0]):
+        bits = [(rnd.randrange(1, 39), rnd.randrange(0, 6), rnd.choice(CONFETTI)) for _ in range(14)]
+        img = new_frame()
+        paste(img, cat_grid(eyes="happy", mouth="open", tail="b" if i % 2 else "a"), dy=dy, pal=pal)
+        d = ImageDraw.Draw(img)
+        for x, y, c in bits:
+            fy = y + (i * 2) % 6  # 彩纸往下飘，只在头顶上方
+            rect(d, x, fy, x + 1, fy, c)
+        out.append(finish(img))
     return out
 
 
-def sleep_frames():
+def sleep_frames(pal):
     out = []
     for i in range(8):
-        def f(d, i=i):
-            draw_cat(d, dy=1 if i % 4 in (1, 2) else 0, eyes="closed", arms="down", tail=0, mouth="smile")
-            # Z 从小到大往上飘
-            k = i % 4
-            draw_z(d, 30, 12 - k * 2, 3)
-            if k >= 2:
-                draw_z(d, 33, 6 - (k - 2) * 2, 4)
-        out.append(frame(f))
+        img = new_frame()
+        paste(img, cat_grid(eyes="closed"), dy=1 if i % 4 in (1, 2) else 0, pal=pal)
+        d = ImageDraw.Draw(img)
+        k = i % 4
+        draw_z(d, 31, 10 - k * 2, 3)
+        if k >= 2:
+            draw_z(d, 34, 4 - (k - 2) * 2, 4)
+        out.append(finish(img))
     return out
 
 
-STATES = {
-    "work": work_frames,
-    "alert": alert_frames,
-    "celebrate": celebrate_frames,
-    "sleep": sleep_frames,
-}
+STATES = {"work": work_frames, "alert": alert_frames, "celebrate": celebrate_frames, "sleep": sleep_frames}
 
 
 def main():
-    sheet_rows = []
-    for skin, palette in SKINS.items():
-        C.clear()
-        C.update(BASE)
-        C.update(palette)
+    rows = []
+    for skin, pal in SKINS.items():
         out = os.path.join(OUT, skin)
         os.makedirs(out, exist_ok=True)
         for name in os.listdir(out):
@@ -254,21 +244,21 @@ def main():
                 os.remove(os.path.join(out, name))
         row = []
         for state, fn in STATES.items():
-            frames = fn()
+            frames = fn(pal)
             for i, img in enumerate(frames):
                 img.save(os.path.join(out, f"{state}_{i}.png"), optimize=True)
-            row.append(frames[0])
-        sheet_rows.append(row)
-        print(f"{skin}: {', '.join(STATES)}")
-    # 预览图：每行一种猫，每列一个状态的第一帧，深色背景，方便肉眼检查
+            row.append(frames)
+        rows.append(row)
+        print(skin)
     if len(sys.argv) > 1:
-        w = max(len(r) for r in sheet_rows) * GRID * SCALE
-        sheet = Image.new("RGBA", (w, len(sheet_rows) * GRID * SCALE), (10, 12, 18, 255))
-        for r, frames in enumerate(sheet_rows):
-            for c, img in enumerate(frames):
-                sheet.alpha_composite(img, (c * GRID * SCALE, r * GRID * SCALE))
+        # 预览：每行一种猫，依次是每个状态的所有帧
+        frames = [[f for st in row for f in st] for row in rows]
+        w = max(len(r) for r in frames) * GRID * SCALE
+        sheet = Image.new("RGBA", (w, len(frames) * GRID * SCALE), (12, 14, 20, 255))
+        for r, fs in enumerate(frames):
+            for c, f in enumerate(fs):
+                sheet.alpha_composite(f, (c * GRID * SCALE, r * GRID * SCALE))
         sheet.save(sys.argv[1])
-        print("预览:", sys.argv[1])
 
 
 if __name__ == "__main__":

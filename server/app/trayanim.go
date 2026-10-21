@@ -107,12 +107,16 @@ func (t *trayAnim) icon(skin, mood string) []byte {
 	if err != nil {
 		return nil
 	}
-	// 160px 的帧里，猫头在 (32,28) 起 96×96 的区域，最近邻缩到 36×36
-	const size, srcX, srcY, srcSize = 36, 32, 28, 96
+	// 160px 的帧里，猫头在 (32,36) 起 96×96 的区域，最近邻缩到 36×36。
+	// 右上角（x≥116、y<60，即画布第 29 格往右、第 15 格往上）没有猫，是牌子和 Z，不裁进来
+	const size, srcX, srcY, srcSize = 36, 32, 36, 96
 	dst := image.NewNRGBA(image.Rect(0, 0, size, size))
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
-			dst.Set(x, y, src.At(srcX+x*srcSize/size, srcY+y*srcSize/size))
+			sx, sy := srcX+x*srcSize/size, srcY+y*srcSize/size
+			if sx < 116 || sy >= 60 {
+				dst.Set(x, y, src.At(sx, sy))
+			}
 		}
 	}
 	if c, ok := moodBadge[mood]; ok {
