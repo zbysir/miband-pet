@@ -12,7 +12,10 @@
     </div>
 
     <div class="bubble bubble-{{focus ? focus.status : 'none'}}" if="{{focus}}" @click="nextAgent">
-      <text class="bubble-project">{{focus.project}}</text>
+      <div class="bubble-head">
+        <text class="bubble-project">{{focus.project}}</text>
+        <text class="bubble-page" if="{{focusPage}}">{{focusPage}}</text>
+      </div>
       <text class="bubble-title">{{focus.title}}</text>
     </div>
     <text class="hint" if="{{!focus}}">{{connected ? '' : '等待 Mac 连接…'}}</text>
@@ -72,7 +75,7 @@ export default {
     mood: 'sleep',
     headline: '',
     focus: null,
-    focusIndex: 0,
+    focusPage: '',
     agents: [],
     counts: { blocked: 0, working: 0, done: 0, idle: 0 },
     connected: false,
@@ -83,6 +86,8 @@ export default {
 
   onInit() {
     this.prevStatus = {}
+    this.focusId = ''
+    this.focusPool = []
     this.celebrateUntil = 0
     this.conn = interconnect.instance()
     this.conn.onopen = () => {
@@ -189,7 +194,6 @@ export default {
       clearTimeout(this.celebrateTimer)
       this.celebrateTimer = setTimeout(() => this.updateMood(), CELEBRATE_MS + 50)
     }
-    this.focusIndex = 0
     this.updateMood()
   },
 
@@ -217,19 +221,36 @@ export default {
     }
   },
 
-  // 气泡里显示的 agent：按优先级排好序后，点一下切到下一个（只在同等重要的里面轮换）
+  // 气泡里显示的 agent：从需要关注的（不是空闲的）里面挑，按优先级排好序。
+  // 记住当前显示的是谁，Mac 推新数据时不跳回第一个；它不在了才换成第一个
   pickFocus() {
     const top = this.agents.filter((a) => a.status !== 'idle' && a.status !== 'unknown')
     const pool = top.length > 0 ? top : this.agents
+    this.focusPool = pool
     if (pool.length === 0) {
       this.focus = null
+      this.focusId = ''
+      this.focusPage = ''
       return
     }
-    this.focus = pool[this.focusIndex % pool.length]
+    const i = Math.max(this.indexInPool(this.focusId), 0)
+    this.focus = pool[i]
+    this.focusId = pool[i].id
+    this.focusPage = pool.length > 1 ? (i + 1) + '/' + pool.length : ''
   },
 
+  indexInPool(id) {
+    for (let i = 0; i < this.focusPool.length; i++) {
+      if (this.focusPool[i].id === id) return i
+    }
+    return -1
+  },
+
+  // 点一下切到下一个
   nextAgent() {
-    this.focusIndex++
+    const pool = this.focusPool
+    if (pool.length < 2) return
+    this.focusId = pool[(this.indexInPool(this.focusId) + 1) % pool.length].id
     this.pickFocus()
   },
 
@@ -328,12 +349,24 @@ export default {
   border-left-color: #3ddc84;
 }
 
+.bubble-head {
+  flex-direction: row;
+  align-items: center;
+}
+
 .bubble-project {
+  flex: 1;
   font-size: 14px;
   font-weight: bold;
   color: #ffffff;
   lines: 1;
   text-overflow: ellipsis;
+}
+
+.bubble-page {
+  margin-left: 6px;
+  font-size: 11px;
+  color: #8a8f98;
 }
 
 .bubble-title {
