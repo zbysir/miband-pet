@@ -4,8 +4,9 @@
 //	miband notify 标题 [正文]   发一条通知
 //	miband apps                列出手环上的第三方快应用
 //	miband install <rpk>       安装快应用并打开
+//	miband launch [包名]        打开快应用（默认宠物版）
 //
-// 配置 config.json：{"auth_key": "0x…", "address": "AA:BB:CC:DD:EE:FF", "notify": true, "notify_start": true}
+// 配置 config.json：{"auth_key": "0x…", "address": "AA:BB:CC:DD:EE:FF", "notify": true, "notify_start": true, "alert": "wake"}
 package main
 
 import (
@@ -39,8 +40,10 @@ type config struct {
 	AuthKey string `json:"auth_key"`
 	Address string `json:"address"`
 	Notify  *bool  `json:"notify"`
-	// agent 开始跑时也发通知（默认开）
+	// agent 开始跑时也提醒（默认开）
 	NotifyStart *bool `json:"notify_start"`
+	// 提醒方式：wake（默认，把快应用打开到前台，手环亮屏不震动）/ notify（发通知，会震动）/ both
+	Alert string `json:"alert"`
 }
 
 func main() {
@@ -51,7 +54,7 @@ func run() int {
 	configPath := flag.String("config", "", "配置文件路径（默认找 ./config.json，再找可执行文件上一级目录）")
 	verbose := flag.Bool("v", false, "打印调试日志")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "用法: miband [-config path] [-v] <app|notify|apps|install> ...")
+		fmt.Fprintln(os.Stderr, "用法: miband [-config path] [-v] <app|notify|apps|install|launch> ...")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -95,6 +98,19 @@ func run() int {
 				fmt.Printf("%-32s v%-4d %s\n", a.GetPackageName(), a.GetVersionCode(), a.GetAppName())
 			}
 			return err
+		})
+	case "launch":
+		pkg := "dev.bysir.herdrpet"
+		if len(args) > 1 {
+			pkg = args[1]
+		}
+		err = withDevice(ctx, cfg, func(_ *xiaomi.Device, apps *xiaomi.Apps) error {
+			if err := apps.Launch(pkg, ""); err != nil {
+				return err
+			}
+			time.Sleep(time.Second)
+			fmt.Println("已打开", pkg)
+			return nil
 		})
 	case "install":
 		if len(args) < 2 {
@@ -201,6 +217,7 @@ type bridge struct {
 	apps        *xiaomi.Apps
 	notify      bool
 	notifyStart bool
+	alert       string
 	packages    []string
 
 	dirty chan struct{} // 有新数据要推，或快应用打开了要一份全量
@@ -223,6 +240,7 @@ func runBridge(ctx context.Context, cfg *config) error {
 		dev: dev, apps: apps,
 		notify:      cfg.Notify == nil || *cfg.Notify,
 		notifyStart: cfg.NotifyStart == nil || *cfg.NotifyStart,
+		alert:       cfg.Alert,
 		dirty:       make(chan struct{}, 1),
 		state:       make(chan func(*bridgeState)),
 	}
@@ -380,6 +398,17 @@ func (b *bridge) push(snap *herdr.Snapshot, notes []herdr.Event) error {
 	slog.Info("推送", "agents", len(snap.Agents))
 	if len(notes) == 0 {
 		return nil
+	}
+	if b.alert != "notify" && len(b.packages) > 0 {
+		// 打开快应用到前台：手环会亮屏、不震动。优先宠物版（列表最后一个）
+		pkg := b.packages[len(b.packages)-1]
+		if err := b.apps.Launch(pkg, ""); err != nil {
+			return err
+		}
+		slog.Info("亮屏", "package", pkg, "events", len(notes))
+		if b.alert != "both" {
+			return nil
+		}
 	}
 	// 同一轮里多个 agent 一起变化，合成一条通知，免得连震好几下
 	title, body := notes[0].Title, notes[0].Body

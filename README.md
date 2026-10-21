@@ -17,10 +17,15 @@ cd server && go build -o miband ./cmd/miband && cd ..
 server/miband app                 # 常驻：推 agent 列表给快应用；agent 跑完/卡住时发通知
 server/miband notify 标题 正文     # 发一条通知
 server/miband apps                # 列出手环上的快应用
+server/miband launch [包名]        # 把快应用打开到前台（默认宠物版），手环会亮屏
 server/miband install pet-app/dist/dev.bysir.herdrpet.debug.1.0.0.rpk
 ```
 
-配置读 `./config.json`（或用 `-config` 指定）；`"notify": false` 关掉所有通知，`"notify_start": false` 只关掉「开始跑」的通知（跑完、卡住照常提醒）。
+配置读 `./config.json`（或用 `-config` 指定）。agent 开始跑、跑完、卡住时会提醒手环：
+
+- `"alert"`：提醒方式。`"wake"`（默认）把宠物快应用打开到前台，手环亮屏但不震动；`"notify"` 发通知，手环震动；`"both"` 两者都要。
+- `"notify_start": false`：开始跑时不提醒，只在跑完、卡住时提醒。
+- `"notify": false`：完全不提醒（快应用里的数据照常更新）。
 
 - `internal/bt/`：RFCOMM 桥接。IOBluetooth 的回调只投递到主线程，所以 `main` 里调 `bt.RunMain`，主线程常驻 run loop。
 - `internal/xiaomi/`：协议（SPP v2 帧、鉴权、AES-CCM/CTR、停等发送、通知、快应用安装和消息）。`go test ./...` 里有个模拟手环做端到端测试，加密结果用 `testdata/vectors.json` 和原 Python 实现对照。
