@@ -74,7 +74,7 @@ export function LoginPanel({tryCache, onDone}: { tryCache: boolean, onDone: () =
         case 'devices': {
             const bands = phase.devices.filter(d => d.authKey)
             if (bands.length === 0) {
-                return <p className="error">账号下没找到带 key 的设备。先在手机上用小米运动健康绑定一次手环。</p>
+                return <p className="error">账号下没找到手环。先在手机上用小米运动健康绑定一次手环。</p>
             }
             return (
                 <div className="device-list">

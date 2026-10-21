@@ -50,9 +50,8 @@ export default function App() {
                 <footer className="footer">
                     <div className="footer-actions">
                         <button className="btn" onClick={() => run('测试通知', TestNotify)} disabled={!state.connected}>发测试通知</button>
-                        <button className="btn" onClick={() => setRefetch(true)}>重新获取 key</button>
+                        <button className="btn" onClick={() => setRefetch(true)}>换手环 / 重新绑定</button>
                     </div>
-                    <span className="muted small" title={state.configPath}>配置：{shortPath(state.configPath)}</span>
                 </footer>
             </aside>
             <main className="col col-main">
@@ -283,13 +282,13 @@ function Setup({state, onSaved}: { state: AppState, onSaved: () => void }) {
             <div className="drag"/>
             <Pet mood="sleep" size={128}/>
             <h1>连接你的手环</h1>
-            <p className="muted">先在手机上用小米运动健康绑定一次手环，然后扫码登录同一个小米账号，自动拿到手环的密钥。</p>
+            <p className="muted">先在手机上用小米运动健康绑定一次手环，然后扫码登录同一个小米账号，自动完成连接设置。</p>
             {err && <p className="error">{err}</p>}
             {!manual && <LoginPanel tryCache={false} onDone={onSaved}/>}
-            <button className="link" onClick={() => setManual(v => !v)}>{manual ? '改用扫码登录' : '手动填写 key'}</button>
+            <button className="link" onClick={() => setManual(v => !v)}>{manual ? '改用扫码登录' : '手动填写（高级）'}</button>
             {manual && <>
                 <label className="field">
-                    <span>Auth key</span>
+                    <span>手环密钥（auth key）</span>
                     <input value={key} onChange={e => setKey(e.target.value)} placeholder="0x0123…（32 位十六进制）" spellCheck={false}/>
                 </label>
                 <label className="field">
@@ -305,12 +304,13 @@ function Setup({state, onSaved}: { state: AppState, onSaved: () => void }) {
     )
 }
 
-// 重新获取 key（手环重新绑定后 key 会变）：先用缓存的登录态，不行再扫码
+// 换手环 / 重新绑定：手环重新绑定后密钥会变，从小米账号重新同步；先用缓存的登录态，不行再扫码
 function RefetchKey({onClose}: { onClose: () => void }) {
     return (
         <div className="modal" onClick={onClose}>
             <div className="modal-body" onClick={e => e.stopPropagation()}>
-                <h2>重新获取手环 key</h2>
+                <h2>重新同步手环</h2>
+                <p className="muted small">手环在手机上重新绑定过，或者想换一只手环时用。</p>
                 <LoginPanel tryCache onDone={onClose}/>
                 <button className="link" onClick={onClose}>取消</button>
             </div>
