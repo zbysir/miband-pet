@@ -25,6 +25,14 @@ func Init(show, quit func()) {
 	C.tray_init(unsafe.Pointer(&icon[0]), C.int(len(icon)))
 }
 
+// SetImage 换菜单栏图标（@2x 的 36px PNG）。
+func SetImage(png []byte) {
+	if len(png) == 0 {
+		return
+	}
+	C.tray_set_image(unsafe.Pointer(&png[0]), C.int(len(png)))
+}
+
 // SetInfo 设置菜单第一行的状态文字。
 func SetInfo(text string) {
 	s := C.CString(text)

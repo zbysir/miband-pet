@@ -52,10 +52,12 @@ type App struct {
 	quitting atomic.Bool // 从菜单栏“退出”时为 true；否则关窗口只是隐藏
 
 	loginCancel context.CancelFunc // 进行中的扫码登录
+
+	anim *trayAnim // 菜单栏的猫
 }
 
 func NewApp() *App {
-	return &App{cfgPath: service.AppConfigPath()}
+	return &App{cfgPath: service.AppConfigPath(), anim: newTrayAnim()}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -68,6 +70,7 @@ func (a *App) startup(ctx context.Context) {
 		a.quit()
 	}()
 	tray.Init(a.showWindow, a.quit)
+	go a.anim.run(ctx)
 	a.bootstrapConfig()
 	a.restartService()
 }
@@ -189,7 +192,9 @@ func (a *App) emitState() {
 		if a.ctx != nil {
 			runtime.EventsEmit(a.ctx, "state")
 		}
-		tray.SetInfo(trayText(a.state()))
+		st := a.state()
+		tray.SetInfo(trayText(st))
+		a.anim.update(st)
 	})
 }
 

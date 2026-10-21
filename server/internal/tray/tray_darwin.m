@@ -64,3 +64,14 @@ void tray_set_dock_visible(int visible) {
         }
     });
 }
+
+// 换菜单栏图标（动画就是不停地换帧）；png 是 @2x 的 36px 图
+void tray_set_image(const void *png, int length) {
+    NSData *data = [NSData dataWithBytes:png length:length];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (gItem == nil) return;
+        NSImage *image = [[NSImage alloc] initWithData:data];
+        image.size = NSMakeSize(18, 18);
+        gItem.button.image = image;
+    });
+}
