@@ -23,7 +23,8 @@ server/miband install pet-app/dist/dev.bysir.herdrpet.debug.1.0.0.rpk
 
 配置读 `./config.json`（或用 `-config` 指定）。agent 开始跑、跑完、卡住时会提醒手环：
 
-- `"alert"`：提醒方式。`"wake"`（默认）把宠物快应用打开到前台，手环亮屏但不震动；`"notify"` 发通知，手环震动；`"both"` 两者都要。
+- `"alert"`：提醒方式。`"auto"`（默认）：手环上快应用正在显示时只亮屏、不震动，否则发通知震动；`"wake"` 总是把宠物快应用打开到前台（亮屏不震动）；`"notify"` 总是发通知；`"both"` 两者都要。
+  快应用在前台时会给 Mac 发 `hello`，离开时（右滑退出、熄屏后回到表盘）发 `bye`，Mac 据此判断。
 - `"notify_start": false`：开始跑时不提醒，只在跑完、卡住时提醒。
 - `"notify": false`：完全不提醒（快应用里的数据照常更新）。
 

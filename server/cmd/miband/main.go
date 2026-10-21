@@ -6,7 +6,7 @@
 //	miband install <rpk>       安装快应用并打开
 //	miband launch [包名]        打开快应用（默认宠物版）
 //
-// 配置 config.json：{"auth_key": "0x…", "address": "AA:BB:CC:DD:EE:FF", "notify": true, "notify_start": true, "alert": "wake"}
+// 配置 config.json：{"auth_key": "0x…", "address": "AA:BB:CC:DD:EE:FF", "notify": true, "notify_start": true, "alert": "auto"}
 package main
 
 import (
@@ -20,6 +20,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -42,7 +43,7 @@ type config struct {
 	Notify  *bool  `json:"notify"`
 	// agent 开始跑时也提醒（默认开）
 	NotifyStart *bool `json:"notify_start"`
-	// 提醒方式：wake（默认，把快应用打开到前台，手环亮屏不震动）/ notify（发通知，会震动）/ both
+	// 提醒方式：auto（默认：手环上快应用在前台就只亮屏，否则发通知）/ wake（总是只亮屏）/ notify（总是发通知，会震动）/ both
 	Alert string `json:"alert"`
 }
 
@@ -220,6 +221,9 @@ type bridge struct {
 	alert       string
 	packages    []string
 
+	fgMu       sync.Mutex
+	foreground map[string]bool // 手环上正在前台的快应用（快应用打开时发 hello、离开时发 bye）
+
 	dirty chan struct{} // 有新数据要推，或快应用打开了要一份全量
 	state chan func(*bridgeState)
 }
@@ -241,12 +245,18 @@ func runBridge(ctx context.Context, cfg *config) error {
 		notify:      cfg.Notify == nil || *cfg.Notify,
 		notifyStart: cfg.NotifyStart == nil || *cfg.NotifyStart,
 		alert:       cfg.Alert,
+		foreground:  map[string]bool{},
 		dirty:       make(chan struct{}, 1),
 		state:       make(chan func(*bridgeState)),
 	}
 	apps.OnMessage = func(pkg string, payload any) {
-		if m, ok := payload.(map[string]any); ok && m["t"] == "hello" {
+		m, _ := payload.(map[string]any)
+		switch m["t"] {
+		case "hello":
+			b.setForeground(pkg, true)
 			b.markDirty()
+		case "bye":
+			b.setForeground(pkg, false)
 		}
 	}
 	dev.OnDisconnect = b.markDirty // 让 deliver 循环醒过来去重连
@@ -263,6 +273,29 @@ func runBridge(ctx context.Context, cfg *config) error {
 			fn(&st)
 		}
 	}
+}
+
+func (b *bridge) setForeground(pkg string, on bool) {
+	b.fgMu.Lock()
+	defer b.fgMu.Unlock()
+	if on {
+		b.foreground[pkg] = true
+	} else {
+		delete(b.foreground, pkg)
+	}
+	slog.Debug("快应用前台状态", "package", pkg, "foreground", on)
+}
+
+// foregroundApp 返回手环上正在前台的快应用；没有则返回空串。
+func (b *bridge) foregroundApp() string {
+	b.fgMu.Lock()
+	defer b.fgMu.Unlock()
+	for _, p := range b.packages {
+		if b.foreground[p] {
+			return p
+		}
+	}
+	return ""
 }
 
 func (b *bridge) markDirty() {
@@ -336,6 +369,9 @@ func (b *bridge) ensureConnected(ctx context.Context) {
 				}
 			}
 			b.packages = list
+			b.fgMu.Lock()
+			b.foreground = map[string]bool{} // 重连后由快应用重新发 hello
+			b.fgMu.Unlock()
 			slog.Info("手环上的快应用", "packages", list)
 			for _, p := range list {
 				if serr := b.apps.SetStatus(p, true); serr != nil && err == nil {
@@ -399,15 +435,33 @@ func (b *bridge) push(snap *herdr.Snapshot, notes []herdr.Event) error {
 	if len(notes) == 0 {
 		return nil
 	}
-	if b.alert != "notify" && len(b.packages) > 0 {
-		// 打开快应用到前台：手环会亮屏、不震动。优先宠物版（列表最后一个）
-		pkg := b.packages[len(b.packages)-1]
+	// 亮屏 = 把快应用打开到前台（手环会亮屏、不震动）
+	wake := func(pkg string) error {
 		if err := b.apps.Launch(pkg, ""); err != nil {
 			return err
 		}
 		slog.Info("亮屏", "package", pkg, "events", len(notes))
-		if b.alert != "both" {
-			return nil
+		return nil
+	}
+	fg := b.foregroundApp()
+	switch b.alert {
+	case "wake", "both":
+		pkg := fg
+		if pkg == "" && len(b.packages) > 0 {
+			pkg = b.packages[len(b.packages)-1] // 优先宠物版（列表最后一个）
+		}
+		if pkg != "" {
+			if err := wake(pkg); err != nil {
+				return err
+			}
+			if b.alert == "wake" {
+				return nil
+			}
+		}
+	case "notify":
+	default: // auto：快应用开着就只亮屏，没开就发通知
+		if fg != "" {
+			return wake(fg)
 		}
 	}
 	// 同一轮里多个 agent 一起变化，合成一条通知，免得连震好几下

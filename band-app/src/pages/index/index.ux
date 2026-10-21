@@ -81,14 +81,24 @@ export default {
 
   onHide() {
     clearInterval(this.tick)
+    // 告诉 Mac 不在前台了：有 agent 变化时 Mac 改发通知，而不是只亮屏
+    this.send({ t: 'bye' })
+  },
+
+  onDestroy() {
+    this.send({ t: 'bye' })
   },
 
   // 页面里有滚动列表，系统的右滑返回会被它吃掉；在根节点上自己处理
   onSwipe(e) {
-    if (e.direction === 'right') this.$app.exit()
+    if (e.direction === 'right') {
+      this.send({ t: 'bye' })
+      this.$app.exit()
+    }
   },
 
   onBackPress() {
+    this.send({ t: 'bye' })
     this.$app.exit()
     return true
   },
