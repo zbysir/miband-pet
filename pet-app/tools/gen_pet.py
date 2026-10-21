@@ -79,7 +79,7 @@ def draw_cat(d, dy=0, eyes="open", arms="down", tail=0, mouth="smile"):
         for k in (y + 12, y + 15, y + 18):
             rect(d, 13, k, 15, k, C["stripe"])
             rect(d, 25, k, 27, k, C["stripe"])
-    d.ellipse((16, y + 13, 24, y + 22), fill=C["cream"])
+    d.ellipse((16, y + 13, 24, y + 21), fill=C["cream"])  # 肚子不要盖住底部轮廓，不然像肚子突出去
     # 耳朵
     for ex, flip in ((12, 1), (28, -1)):
         d.polygon([(ex, y - 6), (ex + 5 * flip, y - 1), (ex, y + 1)], fill=C["line"])
@@ -126,21 +126,27 @@ def draw_cat(d, dy=0, eyes="open", arms="down", tail=0, mouth="smile"):
     # 腮红
     px(d, 13, y + 6, C["pink"])
     px(d, 27, y + 6, C["pink"])
-    # 脚：坐着时露在身体底部两侧，不管手在哪儿都有（手举起来时不至于像没脚）
-    for fx in (11, 25):
-        d.rounded_rectangle((fx, y + 20, fx + 4, y + 23), radius=1, fill=C["line"])
-        rect(d, fx + 1, y + 21, fx + 3, y + 22, C["cream"])
+    # 脚：底部左右两侧的浅色小爪子，带一圈深色细轮廓（白猫、灰猫的肚子也是浅色，不描边就看不见）。
+    # 手举起来时也保留，不然底下空了像没脚
+    if arms in ("down", "up"):
+        # 脚的底边和身体最底下一行（轮廓 y+23）对齐，坐着时底部是一条平线，不会像肚子垂下来
+        for fx in (12, 24):
+            d.rounded_rectangle((fx, y + 20, fx + 4, y + 23), radius=1, fill=C["line"])
+            rect(d, fx + 1, y + 21, fx + 3, y + 22, C["cream"])
     # 手
-    if arms == "down":
-        for ax in (14, 24):
-            rect(d, ax, y + 18, ax + 2, y + 20, C["cream"])
-    elif arms == "up":
+    if arms == "up":
         # 从肩膀斜着举到头的两侧：深色轮廓的手臂 + 浅色爪子
-        for (sx, sy), (px_, py_) in (((13, y + 12), (8, y + 6)), ((27, y + 12), (32, y + 6))):
-            d.line([(sx, sy), (px_, py_)], fill=C["line"], width=3)
-            d.line([(sx, sy), (px_, py_)], fill=C["fur"], width=1)
-            d.rounded_rectangle((px_ - 2, py_ - 3, px_ + 2, py_ + 1), radius=1, fill=C["line"])
-            rect(d, px_ - 1, py_ - 2, px_ + 1, py_, C["cream"])
+        # 欢呼：粗手臂从肩膀往外上方举，爪子在头的斜上方
+        for flip in (1, -1):
+            cx = 20 - 9 * flip  # 肩膀在身体两侧
+            arm = [(cx, y + 13), (cx - 2 * flip, y + 13), (cx - 5 * flip, y + 4), (cx - 3 * flip, y + 4)]
+            d.polygon(arm, fill=C["line"])
+            inner = [(cx, y + 12), (cx - 1 * flip, y + 12), (cx - 4 * flip, y + 5), (cx - 3 * flip, y + 5)]
+            d.polygon(inner, fill=C["fur"])
+            # 爪子：圆一点的小手套（太小会像十字）
+            pxx = cx - 4 * flip
+            d.rounded_rectangle((pxx - 2, y + 1, pxx + 2, y + 5), radius=2, fill=C["line"])
+            rect(d, pxx - 1, y + 2, pxx + 1, y + 4, C["cream"])
     elif isinstance(arms, tuple):  # 打字：(左手抬高, 右手抬高)
         for ax, raised in zip((14, 24), arms):
             ty = y + 17 - (1 if raised else 0)
