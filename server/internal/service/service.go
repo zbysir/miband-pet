@@ -18,7 +18,7 @@ import (
 
 const (
 	pollInterval      = 3 * time.Second
-	reconnectInterval = 15 * time.Second
+	reconnectInterval = 5 * time.Second
 )
 
 // 手环上接收 agent 列表的快应用：列表版和宠物版，装了哪个就推给哪个
@@ -29,13 +29,50 @@ const (
 
 var appPackages = []string{PackageList, PackagePet}
 
-// Dial 用 macOS 经典蓝牙 RFCOMM 连手环。
+// Dial 连手环：先走经典蓝牙 RFCOMM（日常连接）；连不上就扫描 BLE 再连。
+// 手环在「连接新手机」的二维码界面时只能通过 BLE 连上（首次接管就靠这个）。
 func Dial(address string, onData func([]byte), onClosed func()) (xiaomi.Transport, error) {
-	conn, _, err := bt.Open(address, onData, onClosed)
-	if err != nil {
-		return nil, err
+	t, _, err := dial(address, "", onData, onClosed)
+	return t, err
+}
+
+// dial 按 prefer（上次成功的方式）优先尝试：经典蓝牙连不上时要等到超时（十几秒），
+// 首次接管走通 BLE 之后就别每次都先等经典蓝牙超时了。
+func dial(address, prefer string, onData func([]byte), onClosed func()) (xiaomi.Transport, string, error) {
+	classic := func() (xiaomi.Transport, error) {
+		conn, _, err := bt.Open(address, onData, onClosed)
+		if err != nil {
+			return nil, err // 不能返回 nil 的 *bt.Conn 包成非 nil 的接口
+		}
+		return conn, nil
 	}
-	return conn, nil
+	ble := func() (xiaomi.Transport, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		conn, err := bt.OpenBLE(ctx, address, onData, onClosed)
+		if err != nil {
+			return nil, err
+		}
+		return conn, nil
+	}
+	order := []string{"classic", "ble"}
+	if prefer == "ble" {
+		order = []string{"ble", "classic"}
+	}
+	var errs []string
+	for _, kind := range order {
+		open := classic
+		if kind == "ble" {
+			open = ble
+		}
+		t, err := open()
+		if err == nil {
+			return t, kind, nil
+		}
+		slog.Info("连接方式失败，换另一种", "transport", kind, "err", err)
+		errs = append(errs, err.Error())
+	}
+	return nil, "", errors.New(strings.Join(errs, "；"))
 }
 
 // NewDevice 按配置创建手环会话（还没连接）。
@@ -53,6 +90,7 @@ func NewDevice(cfg Config) (*xiaomi.Device, *xiaomi.Apps, error) {
 // State 是给界面看的快照。
 type State struct {
 	Connected  bool             `json:"connected"`
+	Transport  string           `json:"transport"` // classic / ble
 	LastError  string           `json:"lastError"`
 	Packages   []string         `json:"packages"`   // 手环上装了的快应用
 	Foreground string           `json:"foreground"` // 手环上正在前台的快应用
@@ -86,16 +124,33 @@ type Service struct {
 	herdrErr   string
 	lastPush   time.Time
 	events     []EventRecord
+	transport  string
 
 	dirty chan struct{} // 有新数据要推，或快应用打开了要一份全量
 }
 
 func New(cfg Config) (*Service, error) {
-	dev, apps, err := NewDevice(cfg)
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	s := &Service{cfg: cfg, foreground: map[string]bool{}, dirty: make(chan struct{}, 1)}
+	dev, err := xiaomi.NewDevice(cfg.AuthKey, cfg.Address, func(address string, onData func([]byte), onClosed func()) (xiaomi.Transport, error) {
+		s.mu.Lock()
+		prefer := s.transport
+		s.mu.Unlock()
+		t, kind, err := dial(address, prefer, onData, onClosed)
+		if err == nil {
+			s.mu.Lock()
+			s.transport = kind
+			s.mu.Unlock()
+		}
+		return t, err
+	})
 	if err != nil {
 		return nil, err
 	}
-	s := &Service{dev: dev, apps: apps, cfg: cfg, foreground: map[string]bool{}, dirty: make(chan struct{}, 1)}
+	apps := xiaomi.NewApps(dev)
+	s.dev, s.apps = dev, apps
 	apps.OnMessage = func(pkg string, payload any) {
 		m, _ := payload.(map[string]any)
 		switch m["t"] {
@@ -138,6 +193,7 @@ func (s *Service) State() State {
 	defer s.mu.Unlock()
 	st := State{
 		Connected:  s.dev.Connected(),
+		Transport:  s.transport,
 		LastError:  s.lastErr,
 		Packages:   append([]string{}, s.packages...),
 		HerdrError: s.herdrErr,

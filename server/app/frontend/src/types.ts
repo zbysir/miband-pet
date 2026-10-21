@@ -32,6 +32,7 @@ export interface AppState {
     installing: string
     installProgress: number
     connected: boolean
+    transport: '' | 'classic' | 'ble'
     lastError: string
     packages: string[] | null
     foreground: string

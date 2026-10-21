@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useState} from 'react'
-import {BundledApps, GetState, Install, Launch, SaveSetup, TestNotify, UpdateSettings} from '../wailsjs/go/main/App'
+import {BundledApps, GetState, Install, Launch, TestNotify, UpdateSettings} from '../wailsjs/go/main/App'
 import {EventsOn} from '../wailsjs/runtime/runtime'
-import {LoginPanel} from './Login'
+import {Wizard} from './Wizard'
 import {Pet, useMood} from './Pet'
 import type {Mood} from './Pet'
 import type {Agent, AlertMode, AppState, BundledApp, Status} from './types'
@@ -13,10 +13,16 @@ export default function App() {
     const [state, setState] = useState<AppState | null>(null)
     const [bundled, setBundled] = useState<BundledApp[]>([])
     const [toast, setToast] = useState('')
-    const [refetch, setRefetch] = useState(false)
+    const [wizard, setWizard] = useState(false)
 
     const refresh = useCallback(() => {
-        GetState().then(s => setState(s as unknown as AppState))
+        GetState().then(raw => {
+            const s = raw as unknown as AppState
+            setState(prev => {
+                if (!prev && !s.configured) setWizard(true) // 第一次打开、还没配置：走连接向导
+                return s
+            })
+        })
     }, [])
 
     useEffect(() => {
@@ -37,7 +43,9 @@ export default function App() {
     }, [])
 
     if (!state) return <div className="app"/>
-    if (!state.configured) return <Setup state={state} onSaved={refresh}/>
+    if (wizard || !state.configured) {
+        return <Wizard state={state} bundled={bundled} onFinish={() => setWizard(false)}/>
+    }
 
     // 横向两栏：左边宠物和设置，右边 agent 列表；两栏各自滚动
     return (
@@ -50,7 +58,7 @@ export default function App() {
                 <footer className="footer">
                     <div className="footer-actions">
                         <button className="btn" onClick={() => run('测试通知', TestNotify)} disabled={!state.connected}>发测试通知</button>
-                        <button className="btn" onClick={() => setRefetch(true)}>换手环 / 重新绑定</button>
+                        <button className="btn" onClick={() => setWizard(true)}>换手环 / 重新绑定</button>
                     </div>
                 </footer>
             </aside>
@@ -59,10 +67,6 @@ export default function App() {
                 <RecentEvents state={state}/>
             </main>
             {toast && <div className="toast">{toast}</div>}
-            {refetch && <RefetchKey onClose={() => {
-                setRefetch(false)
-                refresh()
-            }}/>}
         </div>
     )
 }
@@ -257,64 +261,6 @@ function BandApps({state, bundled, run}: {
                 )
             })}
         </section>
-    )
-}
-
-// ---------- 首次设置 ----------
-
-function Setup({state, onSaved}: { state: AppState, onSaved: () => void }) {
-    const [manual, setManual] = useState(false)
-    const [key, setKey] = useState('')
-    const [address, setAddress] = useState('')
-    const [err, setErr] = useState(state.setupError)
-    const [saving, setSaving] = useState(false)
-
-    const save = () => {
-        setSaving(true)
-        SaveSetup(key, address)
-            .then(() => onSaved())
-            .catch(e => setErr(String(e)))
-            .finally(() => setSaving(false))
-    }
-
-    return (
-        <div className="app setup">
-            <div className="drag"/>
-            <Pet mood="sleep" size={128}/>
-            <h1>连接你的手环</h1>
-            <p className="muted">先在手机上用小米运动健康绑定一次手环，然后扫码登录同一个小米账号，自动完成连接设置。</p>
-            {err && <p className="error">{err}</p>}
-            {!manual && <LoginPanel tryCache={false} onDone={onSaved}/>}
-            <button className="link" onClick={() => setManual(v => !v)}>{manual ? '改用扫码登录' : '手动填写（高级）'}</button>
-            {manual && <>
-                <label className="field">
-                    <span>手环密钥（auth key）</span>
-                    <input value={key} onChange={e => setKey(e.target.value)} placeholder="0x0123…（32 位十六进制）" spellCheck={false}/>
-                </label>
-                <label className="field">
-                    <span>手环蓝牙地址</span>
-                    <input value={address} onChange={e => setAddress(e.target.value)} placeholder="AA:BB:CC:DD:EE:FF" spellCheck={false}/>
-                </label>
-                <button className="btn btn-primary" onClick={save} disabled={saving || !key || !address}>
-                    {saving ? '保存中…' : '保存并连接'}
-                </button>
-            </>}
-            <p className="muted small">配置保存在 {shortPath(state.configPath)}</p>
-        </div>
-    )
-}
-
-// 换手环 / 重新绑定：手环重新绑定后密钥会变，从小米账号重新同步；先用缓存的登录态，不行再扫码
-function RefetchKey({onClose}: { onClose: () => void }) {
-    return (
-        <div className="modal" onClick={onClose}>
-            <div className="modal-body" onClick={e => e.stopPropagation()}>
-                <h2>重新同步手环</h2>
-                <p className="muted small">手环在手机上重新绑定过，或者想换一只手环时用。</p>
-                <LoginPanel tryCache onDone={onClose}/>
-                <button className="link" onClick={onClose}>取消</button>
-            </div>
-        </div>
     )
 }
 

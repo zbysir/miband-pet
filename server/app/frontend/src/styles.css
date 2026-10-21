@@ -648,3 +648,126 @@ code {
     border: 1px solid var(--card-border);
     text-align: center;
 }
+
+/* ---------- 连接向导 ---------- */
+
+.wizard {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    height: 100vh;
+    padding: 0;
+}
+
+.steps {
+    list-style: none;
+    margin: 0;
+    padding: 48px 16px 16px 20px;
+    border-right: 1px solid var(--card-border);
+    color: var(--muted);
+}
+
+.steps li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+}
+
+.steps i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1px solid var(--card-border);
+    font-style: normal;
+    font-size: 12px;
+    flex: none;
+}
+
+.steps li.current {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.steps li.current i {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+}
+
+.steps li.done i {
+    border-color: var(--done);
+    color: var(--done);
+}
+
+.wizard-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 40px 48px;
+    overflow-y: auto;
+    text-align: center;
+}
+
+.wizard-body > p, .wizard-body .tips, .wizard-body .howto, .wizard-body .device, .wizard-body .field {
+    max-width: 440px;
+    width: 100%;
+}
+
+.wizard-close {
+    position: fixed;
+    right: 16px;
+    top: 12px;
+    z-index: 11;
+}
+
+.tips {
+    text-align: left;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 4px 14px;
+}
+
+.howto {
+    text-align: left;
+    margin: 0;
+    padding-left: 20px;
+}
+
+.howto li {
+    padding: 4px 0;
+}
+
+.connect-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--hover);
+    color: var(--muted);
+}
+
+.connect-status.ok {
+    color: var(--done);
+}
+
+.spinner {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--switch-off);
+    border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
