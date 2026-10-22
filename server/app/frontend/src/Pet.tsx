@@ -1,7 +1,7 @@
 import {useEffect, useRef, useState} from 'react'
 import type {Agent} from './types'
 
-// 和手环上的「Agent 猫」同一套帧（pet-app/tools/gen_pet.py 生成，复制到 public/pet）
+// 和手环上的 Agent 猫插件同一套帧（tools/gen_pet.py 生成到 server/plugins/agent-cat/assets，make app 复制到 public/pet）
 export type Mood = 'alert' | 'celebrate' | 'work' | 'sleep'
 export type Skin = 'orange' | 'gray' | 'white'
 

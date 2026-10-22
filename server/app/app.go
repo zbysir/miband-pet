@@ -10,9 +10,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,13 +22,13 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"miband/internal/micloud"
-	"miband/internal/rpk"
+	"miband/plugins"
 	"miband/internal/service"
 	"miband/internal/tray"
 	"miband/internal/xiaomi"
 )
 
-// 打包进 App 的手环快应用（make app 时从 band-app/pet-app 的 dist 复制进来）
+// 打包进 App 的手环快应用：渲染器（make app 时从 render-app/dist 复制进来）
 //
 //go:embed all:rpk
 var rpkFS embed.FS
@@ -395,7 +395,7 @@ func (a *App) SetKeepAwake(on bool, seconds int) error {
 	return cfg.Save(a.cfgPath)
 }
 
-// SetPet 换猫。Mac 界面马上换；手环上的 Agent 猫只带一只猫，要在 App 里点「更新」按新选的猫重装。
+// SetPet 换猫：Mac 界面和手环上的 Agent 猫插件都马上换。
 func (a *App) SetPet(skin string) error {
 	svc, err := a.service()
 	if err != nil {
@@ -449,32 +449,7 @@ func (a *App) BundledApps() []BundledApp {
 		}
 		out = append(out, BundledApp{Package: m.Package, Name: m.Name, VersionCode: m.VersionCode, File: e.Name()})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Package > out[j].Package }) // 宠物版在前
 	return out
-}
-
-// petPackage 把完整的 Agent 猫安装包改成只带当前选的那只猫，用 make app 复制进来的调试证书重新签名。
-func (a *App) petPackage(full []byte) ([]byte, string, error) {
-	key, err := rpkFS.ReadFile("rpk/sign/private.pem")
-	if err != nil {
-		return nil, "", err
-	}
-	cert, err := rpkFS.ReadFile("rpk/sign/certificate.pem")
-	if err != nil {
-		return nil, "", err
-	}
-	signer, err := rpk.NewSigner(key, cert)
-	if err != nil {
-		return nil, "", err
-	}
-	skin := "orange"
-	a.mu.Lock()
-	if a.cfg != nil {
-		skin = a.cfg.PetSkin()
-	}
-	a.mu.Unlock()
-	data, err := rpk.ForSkin(full, skin, signer)
-	return data, skin, err
 }
 
 func (a *App) extractRpk(name string) (string, error) {
@@ -486,7 +461,7 @@ func (a *App) extractRpk(name string) (string, error) {
 	return path, os.WriteFile(path, data, 0o644)
 }
 
-// Install 把打包进来的快应用装（或更新）到手环上并打开。Agent 猫只带选中的那只猫。
+// Install 把打包进来的快应用（渲染器）装（或更新）到手环上并打开。
 func (a *App) Install(pkg string) error {
 	svc, err := a.service()
 	if err != nil {
@@ -501,18 +476,8 @@ func (a *App) Install(pkg string) error {
 	if file == "" {
 		return fmt.Errorf("App 里没有打包 %s", pkg)
 	}
-	data, err := rpkFS.ReadFile("rpk/" + file)
+	path, err := a.extractRpk(file)
 	if err != nil {
-		return err
-	}
-	skin := ""
-	if pkg == service.PackagePet {
-		if data, skin, err = a.petPackage(data); err != nil {
-			return fmt.Errorf("打包 Agent 猫: %w", err)
-		}
-	}
-	path := filepath.Join(os.TempDir(), "miband-pet-install-"+file)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return err
 	}
 	a.mu.Lock()
@@ -529,18 +494,121 @@ func (a *App) Install(pkg string) error {
 		a.mu.Unlock()
 		a.emitState()
 	}()
-	err = svc.Install(path, func(i, n int) {
+	return svc.Install(path, func(i, n int) {
 		a.mu.Lock()
 		a.progress = float64(i) / float64(n)
 		a.mu.Unlock()
 		a.emitState()
 	})
-	if err != nil || skin == "" {
+}
+
+// ShowPlugin 让手环显示这个插件（手环上没开着就先打开）。
+func (a *App) ShowPlugin(name string) error {
+	svc, err := a.service()
+	if err != nil {
 		return err
 	}
-	cfg := svc.SetPetInstalled(skin)
+	return svc.ShowPlugin(name)
+}
+
+// Uninstall 卸载手环上的快应用（清掉改成插件之前的旧版 Agent 猫、Agents 列表）。
+func (a *App) Uninstall(pkg string) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	return svc.Remove(pkg)
+}
+
+// OpenPluginDir 在访达里打开用户插件目录（没有就先建，放一份说明）。
+func (a *App) OpenPluginDir() error {
+	dir := service.PluginDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	readme := filepath.Join(dir, "README.md")
+	if _, err := os.Stat(readme); os.IsNotExist(err) {
+		_ = os.WriteFile(readme, []byte(pluginReadme), 0o644)
+	}
+	return exec.Command("open", dir).Run()
+}
+
+const pluginReadme = `# miband pet 插件目录
+
+每个子目录是一个插件（manifest.json + index.jsx），保存后自动编译、推到手环。
+内置插件（Agent 猫、今日、Agents）打包在 App 里，不在这个目录；想改的话，在 App 的「插件」里点「复制出来改」，
+会把源码复制到这里，同名插件会替换内置的那个。
+
+最小的插件：
+
+    hello/manifest.json   {"name": "hello", "title": "你好"}
+    hello/index.jsx
+
+        import { Col, Text, useState } from 'miband'
+
+        export default function Hello() {
+          const [n, setN] = useState(0)
+          return (
+            <Col padding={16}>
+              <Text style={{ fontSize: 18 }} onClick={() => setN(n + 1)}>点了 {n} 下</Text>
+            </Col>
+          )
+        }
+
+完整说明：https://github.com/zbysir/miband-pet/blob/main/docs/plugins.md
+`
+
+// CopyBuiltin 把内置插件的源码复制到用户插件目录，方便改；同名的用户插件会替换内置插件。
+func (a *App) CopyBuiltin(name string) error {
+	sub, err := fs.Sub(plugins.FS, name)
+	if err != nil {
+		return err
+	}
+	if _, err := fs.Stat(sub, "manifest.json"); err != nil {
+		return fmt.Errorf("没有内置插件 %s", name)
+	}
+	dst := filepath.Join(service.PluginDir(), name)
+	if _, err := os.Stat(dst); err == nil {
+		return fmt.Errorf("插件目录里已经有 %s 了", name)
+	}
+	err = fs.WalkDir(sub, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, filepath.FromSlash(p))
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := fs.ReadFile(sub, p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o644)
+	})
+	if err != nil {
+		return err
+	}
+	return exec.Command("open", dst).Run()
+}
+
+// SetImpatient 改「卡住超过几分钟猫着急、再提醒一次」，0 表示关。
+func (a *App) SetImpatient(minutes int) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	cfg := svc.SetImpatient(minutes)
 	a.mu.Lock()
 	a.cfg = &cfg
 	a.mu.Unlock()
 	return cfg.Save(a.cfgPath)
+}
+
+// SetClaudeUsage 打开或关掉「显示 Claude Code 额度」：接管 Claude Code 的状态栏命令拿额度，关掉时原样还原。
+func (a *App) SetClaudeUsage(on bool) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	return svc.SetClaudeUsage(on)
 }

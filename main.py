@@ -3,7 +3,7 @@
   python main.py scan                     扫描附近的小米手环
   python main.py notify 标题 正文          连上手环发一条通知
   python main.py watch                    常驻：herdr agent 状态变化时发通知到手环
-  python main.py install [rpk]            把快应用装到手环（默认 band-app/dist 里的）
+  python main.py install [rpk]            把快应用装到手环（Python 版的快应用模式推的是旧格式，新的渲染器用 server/miband）
   python main.py app                      常驻：把 herdr agent 列表推给手环上的快应用
 
 配置读 config.json：{"auth_key": "...", "transport": "spp|ble", "address": "可选，scan 得到的地址"}

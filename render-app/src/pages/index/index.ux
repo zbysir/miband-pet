@@ -1,0 +1,557 @@
+<template>
+  <!-- tools/gen_template.py 生成，不要手改 -->
+  <div class="page" style="height: {{pageH}}px" @swipe="onSwipe">
+    <div if="{{root}}" id="{{root.i}}" style="{{root.s}}" @click="tap(root.i, root.e)" @longpress="hold(root.i, root.e)">
+      <block for="{{n1 in root.c}}" tid="i">
+        <div if="{{n1.t === 'v'}}" id="{{n1.i}}" style="{{n1.s}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)">
+          <block for="{{n2 in n1.c}}" tid="i">
+            <div if="{{n2.t === 'v'}}" id="{{n2.i}}" style="{{n2.s}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)">
+              <block for="{{n3 in n2.c}}" tid="i">
+                <div if="{{n3.t === 'v'}}" id="{{n3.i}}" style="{{n3.s}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)">
+                  <block for="{{n4 in n3.c}}" tid="i">
+                    <div if="{{n4.t === 'v'}}" id="{{n4.i}}" style="{{n4.s}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)">
+                      <block for="{{n5 in n4.c}}" tid="i">
+                        <div if="{{n5.t === 'v'}}" id="{{n5.i}}" style="{{n5.s}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)"></div>
+                        <text elif="{{n5.t === 'x'}}" id="{{n5.i}}" style="{{n5.s}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)">{{n5.x}}</text>
+                        <image elif="{{n5.t === 'm'}}" id="{{n5.i}}" style="{{n5.s}}" src="{{n5.u}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)"></image>
+                        <image-animator elif="{{n5.t === 'a'}}" id="{{n5.i}}" style="{{n5.s}}" images="{{n5.f}}" duration="{{n5.d}}"></image-animator>
+                      </block>
+                    </div>
+                    <text elif="{{n4.t === 'x'}}" id="{{n4.i}}" style="{{n4.s}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)">{{n4.x}}</text>
+                    <image elif="{{n4.t === 'm'}}" id="{{n4.i}}" style="{{n4.s}}" src="{{n4.u}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)"></image>
+                    <image-animator elif="{{n4.t === 'a'}}" id="{{n4.i}}" style="{{n4.s}}" images="{{n4.f}}" duration="{{n4.d}}"></image-animator>
+                  </block>
+                </div>
+                <text elif="{{n3.t === 'x'}}" id="{{n3.i}}" style="{{n3.s}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)">{{n3.x}}</text>
+                <image elif="{{n3.t === 'm'}}" id="{{n3.i}}" style="{{n3.s}}" src="{{n3.u}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)"></image>
+                <image-animator elif="{{n3.t === 'a'}}" id="{{n3.i}}" style="{{n3.s}}" images="{{n3.f}}" duration="{{n3.d}}"></image-animator>
+              </block>
+            </div>
+            <text elif="{{n2.t === 'x'}}" id="{{n2.i}}" style="{{n2.s}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)">{{n2.x}}</text>
+            <image elif="{{n2.t === 'm'}}" id="{{n2.i}}" style="{{n2.s}}" src="{{n2.u}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)"></image>
+            <image-animator elif="{{n2.t === 'a'}}" id="{{n2.i}}" style="{{n2.s}}" images="{{n2.f}}" duration="{{n2.d}}"></image-animator>
+          </block>
+        </div>
+        <text elif="{{n1.t === 'x'}}" id="{{n1.i}}" style="{{n1.s}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)">{{n1.x}}</text>
+        <image elif="{{n1.t === 'm'}}" id="{{n1.i}}" style="{{n1.s}}" src="{{n1.u}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)"></image>
+        <image-animator elif="{{n1.t === 'a'}}" id="{{n1.i}}" style="{{n1.s}}" images="{{n1.f}}" duration="{{n1.d}}"></image-animator>
+      </block>
+    </div>
+    <text if="{{!root}}" class="empty">{{connected ? '加载中…' : '等待 Mac 连接…'}}</text>
+    <text if="{{root && !connected}}" class="offline">未连接 Mac</text>
+  </div>
+</template>
+
+<script>
+// 手环上的插件宿主：从 Mac 收插件代码、图片和数据，插件在手环本地跑（运行时见 common/runtime.js），
+// 点击、滑动都在手环上处理，不经过 Mac。显示哪个插件由 Mac 决定（App 里切换）。界面树的格式见 tools/gen_template.py。
+//
+// Mac → 手环：
+//   {t:'plugins', list: [{name, title, code, assets: {路径: 哈希}, err}]}   插件列表；code 是代码文件的哈希
+//   {t:'blob', h, x: 'js' | 'png', k, n, b}   代码或图片分片（第 k 片，共 n 片，base64），收齐后写进 internal://files/<h>.<x>
+//   {t:'store', name, v}                     数据（agents、settings…），插件里 useStore(name) 读
+//   {t:'show', name}                         显示这个插件（App 里切换、提醒时切回猫）
+//   {t:'vib', m: 'short' | 'long'}
+// 手环 → Mac：
+//   {t:'hello', w, h, have: [哈希…]}        打开或亮屏时；have 是手环上已有的代码和图片
+//   {t:'bye'}                                离开前台
+//   {t:'need', h: [哈希…]}                   缺这些代码或图片
+//   {t:'nav', name}                          当前显示的插件（打开时、切换后）
+//   {t:'log', p, level, msg}                 插件的 console 输出和出错信息
+//   {t:'call', p, name, args}                插件让 Mac 做事（插件里 call(name, ...args)）
+import interconnect from '@system.interconnect'
+import storage from '@system.storage'
+import device from '@system.device'
+import file from '@system.file'
+import vibrator from '@system.vibrator'
+import createRuntime from '../../common/runtime.js'
+
+const CACHE_KEY = 'state'
+const FILES = 'internal://files/'
+const MAX_DEPTH = 6 // 和 tools/gen_template.py 的 DEPTH 一致
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+const B64MAP = {}
+for (let i = 0; i < B64.length; i++) B64MAP[B64[i]] = i
+
+function b64decode(s) {
+  s = s.replace(/=+$/, '')
+  const out = new Uint8Array(Math.floor(s.length * 3 / 4))
+  let o = 0
+  for (let i = 0; i < s.length; i += 4) {
+    const a = B64MAP[s[i]], b = B64MAP[s[i + 1]], c = B64MAP[s[i + 2]], d = B64MAP[s[i + 3]]
+    out[o++] = (a << 2) | (b >> 4)
+    if (c !== undefined) out[o++] = ((b & 15) << 4) | (c >> 2)
+    if (d !== undefined) out[o++] = ((c & 3) << 6) | d
+  }
+  return out
+}
+
+function text(id, style, x) {
+  return { t: 'x', i: id, s: style, x }
+}
+
+function messageTree(title, msg, color) {
+  return {
+    t: 'v', i: 'msg', s: 'flex-direction:column;padding-top:24px;padding-left:12px;padding-right:12px;width:212px',
+    c: [text('msg-t', 'font-size:16px;font-weight:bold;color:' + color, title), text('msg-m', 'font-size:11px;color:#c9ced8;margin-top:8px', msg.slice(0, 600))]
+  }
+}
+
+function depth(n) {
+  let d = 0
+  ;(n.c || []).forEach((c) => {
+    if (c.t === 'v') d = Math.max(d, depth(c))
+  })
+  return d + 1
+}
+
+// 每个节点都带上全部字段：页面上的树是响应式的，事后才加的字段不会触发更新（patch 只改已有字段）
+const EMPTY = { s: '', x: '', u: '', f: [], d: '', e: 0, c: [] }
+function normalize(n) {
+  const out = Object.assign({}, EMPTY, n)
+  out.c = (n.c || []).map(normalize)
+  return out
+}
+
+function sameFrames(a, b) {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i].src !== b[i].src) return false
+  return true
+}
+
+// 把新树的变化写进页面上正在画的树：只改变了的字段，框架只更新这些绑定，元素（包括正在播的动画）不重建。
+// 子节点的 id 和顺序都没变就逐个比，否则整段子节点换掉
+function patch(old, neu) {
+  ;['s', 'x', 'u', 'd', 'e'].forEach((k) => {
+    if (old[k] !== neu[k]) old[k] = neu[k]
+  })
+  if (!sameFrames(old.f, neu.f)) old.f = neu.f
+  const a = old.c
+  const b = neu.c
+  let same = a.length === b.length
+  for (let i = 0; same && i < a.length; i++) same = a[i].i === b[i].i && a[i].t === b[i].t
+  if (same) {
+    for (let i = 0; i < a.length; i++) patch(a[i], b[i])
+  } else {
+    old.c = b
+  }
+}
+
+// 树里用到的图片哈希
+function imagesOf(node, out) {
+  const add = (src) => {
+    if (src && src.indexOf(FILES) === 0) out.push(src.slice(FILES.length, src.lastIndexOf('.')))
+  }
+  add(node.u)
+  ;(node.f || []).forEach((f) => add(f.src))
+  ;(node.c || []).forEach((c) => imagesOf(c, out))
+  return out
+}
+
+// 树里所有动画节点：{id: 帧签名}
+function spritesOf(node, out) {
+  if (!node) return out
+  if (node.t === 'a') out[node.i] = (node.f || []).map((f) => f.src).join(',') + '|' + node.d
+  if (node.c) node.c.forEach((c) => spritesOf(c, out))
+  return out
+}
+
+export default {
+  private: {
+    root: null,
+    connected: false,
+    pageH: 360
+  },
+
+  onInit() {
+    this.plugins = [] // Mac 发来的插件列表
+    this.stores = {}
+    this.data = {} // 插件的 storage：{插件名: {key: value}}
+    this.active = 0
+    this.insts = {} // 插件名 → 正在跑的实例 {name, code, rt, tree, err}
+    this.waiting = null // 等图片到了再画的树
+    this.have = {} // 手环上已有的代码和图片
+    this.asked = {} // 已经向 Mac 要过的哈希 → 时间
+    this.parts = {}
+    this.started = {}
+    this.lastTap = 0
+    this.conn = interconnect.instance()
+    this.conn.onopen = () => {
+      this.connected = true
+      this.hello()
+    }
+    this.conn.onclose = () => { this.connected = false }
+    this.conn.onerror = () => { this.connected = false }
+    this.conn.onmessage = (msg) => {
+      let m = msg && msg.data
+      try {
+        if (typeof m === 'string') m = JSON.parse(m)
+      } catch (e) {
+        return
+      }
+      if (m) this.handle(m)
+    }
+  },
+
+  onShow() {
+    this.asked = {}
+    this.started = {}
+    const ready = () => this.layout(() => this.listFiles(() => {
+      this.show()
+      this.hello()
+    }))
+    if (this.plugins.length > 0) return ready()
+    // 先用上次的插件和数据把界面画出来，不用等 Mac
+    storage.get({
+      key: CACHE_KEY,
+      success: (v) => {
+        try {
+          const c = JSON.parse(v)
+          this.plugins = c.plugins || []
+          this.stores = c.stores || {}
+          this.data = c.data || {}
+          this.active = c.active || 0
+        } catch (e) {}
+        ready()
+      },
+      fail: () => ready()
+    })
+  },
+
+  onHide() {
+    this.save()
+    this.send({ t: 'bye' })
+  },
+
+  onDestroy() {
+    this.send({ t: 'bye' })
+  },
+
+  onBackPress() {
+    this.send({ t: 'bye' })
+    this.$app.exit()
+    return true
+  },
+
+  save() {
+    storage.set({ key: CACHE_KEY, value: JSON.stringify({ plugins: this.plugins, stores: this.stores, data: this.data, active: this.active }) })
+  },
+
+  send(obj) {
+    try {
+      this.conn.send({ data: obj, success: () => {}, fail: () => {} })
+    } catch (e) {}
+  },
+
+  hello() {
+    this.send({ t: 'hello', w: 212, h: this.pageH, have: Object.keys(this.have) })
+    const p = this.plugins[this.active]
+    if (p) this.send({ t: 'nav', name: p.name })
+  },
+
+  log(name, level, msg) {
+    this.send({ t: 'log', p: name, level, msg: String(msg).slice(0, 800) })
+  },
+
+  // ---------- 收消息 ----------
+
+  handle(m) {
+    switch (m.t) {
+      case 'plugins':
+        this.connected = true
+        this.plugins = m.list || []
+        if (this.active >= this.plugins.length) this.active = 0
+        this.show()
+        break
+      case 'store':
+        this.stores[m.name] = m.v
+        Object.keys(this.insts).forEach((k) => this.insts[k].rt.setStore(m.name, m.v))
+        break
+      case 'blob':
+        this.blobChunk(m)
+        break
+      case 'show':
+        this.go(this.plugins.findIndex((p) => p.name === m.name))
+        break
+      case 'vib':
+        vibrator.vibrate({ mode: m.m === 'long' ? 'long' : 'short' })
+        break
+    }
+  },
+
+  blobChunk(m) {
+    const p = this.parts[m.h] || (this.parts[m.h] = { list: [], got: 0 })
+    if (p.list[m.k] === undefined) p.got++
+    p.list[m.k] = m.b
+    if (p.got < m.n) return
+    delete this.parts[m.h]
+    file.writeArrayBuffer({
+      uri: FILES + m.h + '.' + m.x,
+      buffer: b64decode(p.list.join('')),
+      success: () => {
+        this.have[m.h] = true
+        delete this.asked[m.h]
+        this.blobArrived()
+      },
+      fail: (d, code) => this.log('', 'error', '写文件失败 ' + m.h + ' ' + code)
+    })
+  },
+
+  // 缺的代码或图片到了：当前页在等它就接着画
+  blobArrived() {
+    if (this.waiting) {
+      const tree = this.waiting
+      this.waiting = null
+      this.showTree(tree)
+      return
+    }
+    const p = this.plugins[this.active]
+    if (p && !this.insts[p.name] && this.have[p.code]) this.show()
+  },
+
+  need(hashes) {
+    const now = Date.now()
+    const list = hashes.filter((h) => !this.have[h] && !(this.asked[h] && now - this.asked[h] < 10000))
+    if (list.length === 0) return
+    list.forEach((h) => { this.asked[h] = now })
+    this.send({ t: 'need', h: list })
+  },
+
+  listFiles(done) {
+    file.list({
+      uri: FILES,
+      success: (d) => {
+        ;(d.fileList || []).forEach((f) => {
+          const m = /([0-9a-f]+)\.(png|js)$/.exec(f.uri || '')
+          if (m) this.have[m[1]] = true
+        })
+        done()
+      },
+      fail: () => done()
+    })
+  },
+
+  // ---------- 跑插件 ----------
+
+  // 显示当前页：插件已经在跑就直接画它的树，否则加载代码
+  show() {
+    const p = this.plugins[this.active]
+    if (!p) {
+      this.root = this.connected ? messageTree('没有插件', '', '#c9ced8') : null
+      return
+    }
+    if (p.err) return this.showTree(messageTree(p.title + ' 出错了', p.err, '#ff9f1c'))
+    const inst = this.insts[p.name]
+    if (inst && inst.code === p.code) {
+      if (inst.err) return this.showTree(messageTree(p.title + ' 出错了', inst.err, '#ff9f1c'))
+      if (inst.tree) this.showTree(inst.tree)
+      return
+    }
+    if (!this.have[p.code]) {
+      this.need([p.code])
+      return
+    }
+    file.readText({
+      uri: FILES + p.code + '.js',
+      success: (d) => this.start(p, d.text),
+      fail: () => {
+        delete this.have[p.code]
+        this.need([p.code])
+      }
+    })
+  },
+
+  start(p, code) {
+    if (this.insts[p.name] && this.insts[p.name].code === p.code) return
+    const inst = { name: p.name, code: p.code, tree: null, err: null }
+    const onError = (msg) => {
+      inst.err = msg
+      this.log(p.name, 'error', msg)
+      if (this.insts[p.name] === inst && this.isActive(p.name)) this.showTree(messageTree(p.title + ' 出错了', msg, '#ff9f1c'))
+    }
+    const rt = createRuntime({
+      render: (tree) => {
+        inst.tree = tree
+        inst.err = null
+        if (this.insts[p.name] === inst && this.isActive(p.name)) this.showTree(tree)
+      },
+      error: onError,
+      log: (level, msg) => this.log(p.name, level, msg),
+      asset: (path) => {
+        const h = (p.assets || {})[String(path).replace(/^\.\//, '')]
+        if (!h) throw new Error('插件里没有这个图片：' + path)
+        return FILES + h + '.png'
+      },
+      vibrate: (mode) => {
+        if (this.isActive(p.name)) vibrator.vibrate({ mode: mode === 'long' ? 'long' : 'short' })
+      },
+      call: (name, args) => this.send({ t: 'call', p: p.name, name, args }),
+      storageGet: (key) => (this.data[p.name] || {})[key],
+      storageSet: (key, value) => {
+        if (!this.data[p.name]) this.data[p.name] = {}
+        this.data[p.name][key] = value
+      }
+    })
+    inst.rt = rt
+    this.insts[p.name] = inst
+    try {
+      const mod = { exports: {} }
+      const require = (name) => {
+        if (name === 'miband') return rt.api
+        throw new Error('只能 require("miband")，不支持 ' + name)
+      }
+      new Function('module', 'exports', 'require', 'console', '__h', '__Fragment', code)(mod, mod.exports, require, rt.api.console, rt.api.h, rt.api.Fragment)
+      const component = mod.exports.default
+      if (typeof component !== 'function') throw new Error('插件要 export default 一个组件函数')
+      Object.keys(this.stores).forEach((k) => rt.setStore(k, this.stores[k]))
+      rt.setStore('screen', { width: 212, height: this.pageH })
+      rt.mount(component)
+    } catch (e) {
+      onError('加载出错：' + (e && e.message ? e.message : e))
+    }
+  },
+
+  isActive(name) {
+    const p = this.plugins[this.active]
+    return !!p && p.name === name
+  },
+
+  // 画一棵树：图片都在手环上了才画，缺的先向 Mac 要
+  showTree(tree) {
+    if (!tree) return
+    if (depth(tree) > MAX_DEPTH) tree = messageTree('界面嵌套太深', '最多 ' + MAX_DEPTH + ' 层 View', '#ff9f1c')
+    const missing = imagesOf(tree, []).filter((h) => !this.have[h])
+    if (missing.length > 0) {
+      this.waiting = tree
+      this.need(missing)
+      return
+    }
+    this.waiting = null
+    const t0 = Date.now()
+    const next = normalize(tree)
+    if (this.root && this.root.i === next.i && this.root.t === next.t) patch(this.root, next)
+    else this.root = next
+    this.startSprites()
+    // 点了之后多久把新界面交给框架；慢了发回 Mac 记一笔
+    if (this.tapAt) {
+      const ms = Date.now() - this.tapAt
+      this.tapAt = 0
+      if (ms > 200) this.log('', 'info', '点击到界面更新 ' + ms + 'ms（其中更新 ' + (Date.now() - t0) + 'ms）')
+    }
+  },
+
+  go(i) {
+    if (i < 0 || i >= this.plugins.length || i === this.active) return
+    this.active = i
+    this.waiting = null
+    this.started = {}
+    this.show()
+    this.send({ t: 'nav', name: this.plugins[i].name })
+  },
+
+  // ---------- 交互：都在手环上处理 ----------
+
+  activeRuntime() {
+    const p = this.plugins[this.active]
+    const inst = p && this.insts[p.name]
+    return inst && inst.rt
+  },
+
+  tap(id, ev) {
+    if (!(ev & 1)) return
+    // click 会冒泡：里外两层都能点时只算最里面那个
+    const now = Date.now()
+    if (now - this.lastTap < 150) return
+    this.lastTap = now
+    const rt = this.activeRuntime()
+    this.tapAt = now
+    if (rt) rt.dispatch(id, 'click')
+  },
+
+  hold(id, ev) {
+    if (!(ev & 2)) return
+    const now = Date.now()
+    if (now - this.lastTap < 150) return
+    this.lastTap = now
+    const rt = this.activeRuntime()
+    if (rt) rt.dispatch(id, 'longpress')
+  },
+
+  // 右滑退出（系统手势可能被子元素吃掉，自己处理）；其它方向交给插件
+  onSwipe(e) {
+    const d = e.direction
+    if (d === 'right') {
+      this.send({ t: 'bye' })
+      this.$app.exit()
+      return
+    }
+    const rt = this.activeRuntime()
+    if (rt) rt.swipe(d)
+  },
+
+  // image-animator 不会自己播：新出现的、换了帧的，等元素建好后 start
+  startSprites() {
+    const now = spritesOf(this.root, {})
+    const todo = Object.keys(now).filter((id) => this.started[id] !== now[id])
+    this.started = now
+    todo.forEach((id) => this.startSprite(id, now[id], 0))
+  },
+
+  // 新建一页要几百毫秒（约 10ms 一个节点），元素还没建好就隔 50ms 再试，最多 2 秒
+  startSprite(id, sig, tries) {
+    setTimeout(() => {
+      if (this.started[id] !== sig) return // 已经换掉了
+      let el = null
+      try {
+        el = this.$element(id)
+      } catch (e) {}
+      if (el) {
+        try {
+          el.start()
+        } catch (e) {}
+        return
+      }
+      if (tries < 40) this.startSprite(id, sig, tries + 1)
+    }, tries === 0 ? 60 : 50)
+  },
+
+  layout(done) {
+    device.getInfo({
+      success: (info) => {
+        const w = info.screenWidth || 0
+        const h = info.screenHeight || 0
+        if (w > 0 && h > 0) this.pageH = Math.round(h / (w / 212))
+        Object.keys(this.insts).forEach((k) => this.insts[k].rt.setStore('screen', { width: 212, height: this.pageH }))
+        done()
+      },
+      fail: () => done()
+    })
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 212px;
+  flex-direction: column;
+  background-color: #000000;
+}
+
+.empty {
+  margin-top: 120px;
+  width: 212px;
+  font-size: 13px;
+  color: #5c6068;
+  text-align: center;
+}
+
+.offline {
+  position: absolute;
+  top: 2px;
+  left: 0px;
+  width: 212px;
+  font-size: 10px;
+  color: #ff6b6b;
+  text-align: center;
+}
+</style>

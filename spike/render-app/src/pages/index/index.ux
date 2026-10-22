@@ -1,0 +1,307 @@
+<import name="rnode" src="../../components/rnode.ux"></import>
+
+<!--
+  渲染实验：Mac 发来一棵界面树，这里照着画，再把布局结果（getBoundingClientRect）、事件、耗时报回 Mac。
+  方案 A（mode=rec）：递归组件 rnode；方案 B（mode=flat）：页面模板里写死 4 层，不用自定义组件。
+-->
+<template>
+  <div class="page" style="height: {{pageH}}px" @swipe="onSwipe">
+    <text class="status">{{status}}</text>
+    <div class="stage">
+      <rnode if="{{mode === 'rec' && tree}}" node="{{tree}}"></rnode>
+      <div elif="{{mode === 'flat' && tree}}" id="{{tree.id}}" style="{{tree.style}}" @click="tap(tree.id)">
+        <block for="{{a in tree.children}}">
+          <div if="{{a.type === 'view'}}" id="{{a.id}}" style="{{a.style}}" @click="tap(a.id)">
+            <block for="{{b in a.children}}">
+              <div if="{{b.type === 'view'}}" id="{{b.id}}" style="{{b.style}}" @click="tap(b.id)">
+                <block for="{{c in b.children}}">
+                  <div if="{{c.type === 'view'}}" id="{{c.id}}" style="{{c.style}}" @click="tap(c.id)"></div>
+                  <text elif="{{c.type === 'text'}}" id="{{c.id}}" style="{{c.style}}">{{c.text}}</text>
+                  <image elif="{{c.type === 'image'}}" id="{{c.id}}" src="{{c.src}}" style="{{c.style}}" @complete="imgOk(c.id)" @error="imgErr(c.id)"></image>
+                  <image-animator elif="{{c.type === 'sprite'}}" id="{{c.id}}" images="{{c.frames}}" duration="{{c.duration}}" style="{{c.style}}"></image-animator>
+                </block>
+              </div>
+              <text elif="{{b.type === 'text'}}" id="{{b.id}}" style="{{b.style}}">{{b.text}}</text>
+              <image elif="{{b.type === 'image'}}" id="{{b.id}}" src="{{b.src}}" style="{{b.style}}" @complete="imgOk(b.id)" @error="imgErr(b.id)"></image>
+              <image-animator elif="{{b.type === 'sprite'}}" id="{{b.id}}" images="{{b.frames}}" duration="{{b.duration}}" style="{{b.style}}"></image-animator>
+            </block>
+          </div>
+          <text elif="{{a.type === 'text'}}" id="{{a.id}}" style="{{a.style}}">{{a.text}}</text>
+          <image elif="{{a.type === 'image'}}" id="{{a.id}}" src="{{a.src}}" style="{{a.style}}" @complete="imgOk(a.id)" @error="imgErr(a.id)"></image>
+          <image-animator elif="{{a.type === 'sprite'}}" id="{{a.id}}" images="{{a.frames}}" duration="{{a.duration}}" style="{{a.style}}"></image-animator>
+        </block>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import interconnect from '@system.interconnect'
+import file from '@system.file'
+import device from '@system.device'
+
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+function b64decode(s) {
+  const map = {}
+  for (let i = 0; i < B64.length; i++) map[B64[i]] = i
+  s = s.replace(/=+$/, '')
+  const out = new Uint8Array(Math.floor(s.length * 3 / 4))
+  let o = 0
+  for (let i = 0; i < s.length; i += 4) {
+    const a = map[s[i]], b = map[s[i + 1]], c = map[s[i + 2]], d = map[s[i + 3]]
+    out[o++] = (a << 2) | (b >> 4)
+    if (c !== undefined) out[o++] = ((b & 15) << 4) | (c >> 2)
+    if (d !== undefined) out[o++] = ((c & 3) << 6) | d
+  }
+  return out
+}
+
+export default {
+  private: {
+    mode: 'flat',
+    tree: null,
+    status: '等待 Mac…',
+    pageH: 360
+  },
+
+  onInit() {
+    this.imgParts = {}
+    this.job = null
+    this.conn = interconnect.instance()
+    this.conn.onopen = () => {
+      this.status = '已连接'
+      this.send({ t: 'hello' })
+    }
+    this.conn.onclose = () => { this.status = '断开' }
+    this.conn.onerror = () => { this.status = '连接出错' }
+    this.conn.onmessage = (msg) => this.onMsg(msg)
+    // 递归组件里的节点通过 $dispatch 往上报
+    this.$on('rect', (e) => this.collect(e.detail))
+    this.$on('ev', (e) => this.send(Object.assign({ t: 'ev', ts: Date.now() }, e.detail)))
+    this.$on('img', (e) => this.send(Object.assign({ t: 'img' }, e.detail)))
+    // 递归组件的 onReady 次数：没量到布局时，至少知道建出了几个节点
+    this.mounted = 0
+    this.$on('mounted', () => { this.mounted++ })
+  },
+
+  onShow() {
+    device.getInfo({
+      success: (info) => {
+        const w = info.screenWidth || 0
+        const h = info.screenHeight || 0
+        if (w > 0 && h > 0) this.pageH = Math.round(h / (w / 212))
+        this.send({ t: 'info', screenWidth: w, screenHeight: h })
+      }
+    })
+    this.send({ t: 'hello' })
+  },
+
+  onSwipe(e) {
+    if (e.direction === 'right') this.$app.exit()
+  },
+
+  onBackPress() {
+    this.$app.exit()
+    return true
+  },
+
+  send(obj) {
+    try {
+      this.conn.send({ data: obj, success: () => {}, fail: () => {} })
+    } catch (e) {}
+  },
+
+  onMsg(msg) {
+    let m = msg && msg.data
+    try {
+      if (typeof m === 'string') m = JSON.parse(m)
+    } catch (e) {
+      this.send({ t: 'err', where: 'parse', len: (msg && msg.data && msg.data.length) || 0 })
+      return
+    }
+    if (!m) return
+    try {
+      this.handle(m, Date.now())
+    } catch (e) {
+      this.send({ t: 'err', where: m.t, msg: String(e && e.message) })
+    }
+  },
+
+  handle(m, recvAt) {
+    switch (m.t) {
+      case 'tree':
+        // 换一棵树，画完后量布局：{mode, tree, measure: [id…], expect, sprites: [id…], seq}
+        this.status = m.label || ''
+        this.mounted = 0
+        this.mode = m.mode
+        this.tree = m.tree
+        this.startMeasure(m, recvAt)
+        break
+      case 'pong':
+        // 往返测速：手环发 ping，Mac 回一棵新树；画完、量到第一个节点算一轮
+        this.tree = m.tree
+        this.waitRect(m.probe, (r) => {
+          this.send({ t: 'pong_ok', i: m.i, how: r ? 'rect' : 'timeout', rtt: Date.now() - m.ts, render: Date.now() - recvAt })
+        })
+        break
+      case 'ping_start':
+        this.pings = m.n
+        this.mode = 'flat'
+        this.send({ t: 'ping', i: 0, ts: Date.now() })
+        break
+      case 'ping_next':
+        this.send({ t: 'ping', i: m.i, ts: Date.now() })
+        break
+      case 'big':
+        this.send({ t: 'big_ok', n: m.n, len: m.pad.length })
+        break
+      case 'imgc':
+        this.imgChunk(m)
+        break
+      case 'js':
+        // 手环能不能执行动态下发的代码
+        this.evalTest(m)
+        break
+    }
+  },
+
+  startMeasure(m, recvAt) {
+    this.job = { seq: m.seq, recvAt, want: m.expect || (m.measure || []).length, rects: {}, errs: {}, firstOk: 0, mounted: 0, sent: false }
+    const job = this.job
+    // 渲染中途调 getBoundingClientRect 不一定有回调：每 40ms 量一次没量到的，直到都量到或超时
+    setTimeout(() => {
+      ;(m.sprites || []).forEach((id) => {
+        try { this.$element(id).start() } catch (e) {}
+      })
+    }, 30)
+    const tick = () => {
+      if (job.sent || this.job !== job) return
+      if (Date.now() - recvAt > 3000) return this.flush(job)
+      if (m.mode === 'rec') {
+        this.$broadcast('measure')
+      } else {
+        ;(m.measure || []).forEach((id) => {
+          if (job.rects[id]) return
+          const el = this.$element(id)
+          if (!el) return this.collect({ id, err: 'noel' })
+          el.getBoundingClientRect({
+            success: (r) => this.collect({ id, r: { l: r.left, t: r.top, w: r.width, h: r.height } }),
+            fail: (d, code) => this.collect({ id, err: code })
+          })
+        })
+      }
+      setTimeout(tick, 40)
+    }
+    setTimeout(tick, 0)
+  },
+
+  // 量到某个节点就回调（每 40ms 试一次），超时回调 null
+  waitRect(id, cb) {
+    const t0 = Date.now()
+    let done = false
+    const tick = () => {
+      if (done) return
+      if (Date.now() - t0 > 3000) {
+        done = true
+        return cb(null)
+      }
+      const el = this.$element(id)
+      if (el) {
+        el.getBoundingClientRect({
+          success: (r) => {
+            if (done) return
+            done = true
+            cb(r)
+          }
+        })
+      }
+      setTimeout(tick, 40)
+    }
+    tick()
+  },
+
+  collect(d) {
+    const job = this.job
+    if (!job || job.sent) return
+    if (!d.r) {
+      job.errs[d.id] = (job.errs[d.id] || []).concat([d.err])
+      return
+    }
+    if (job.rects[d.id]) return
+    if (!job.firstOk) job.firstOk = Date.now() - job.recvAt
+    job.rects[d.id] = d.r
+    if (Object.keys(job.rects).length >= job.want) this.flush(job)
+  },
+
+  flush(job) {
+    if (!job || job.sent) return
+    job.sent = true
+    this.send({ t: 'rects', seq: job.seq, ms: Date.now() - job.recvAt, firstOk: job.firstOk, mounted: this.mounted || 0, rects: job.rects, errs: job.errs })
+  },
+
+  evalTest(m) {
+    const out = { t: 'js_result', id: m.id }
+    try {
+      out.fn = String(new Function('a', 'b', m.code)(2, 3))
+    } catch (e) {
+      out.fnErr = String(e && e.message ? e.message : e)
+    }
+    try {
+      out.ev = String(eval(m.expr))
+    } catch (e) {
+      out.evErr = String(e && e.message ? e.message : e)
+    }
+    this.send(out)
+  },
+
+  imgChunk(m) {
+    // 图片分片：{name, i, n, b64}；收齐后解码写进 internal://files/
+    const parts = this.imgParts[m.name] || (this.imgParts[m.name] = { list: [], got: 0, start: Date.now() })
+    parts.list[m.i] = m.b64
+    parts.got++
+    if (parts.got < m.n) return
+    delete this.imgParts[m.name]
+    const t0 = Date.now()
+    const buf = b64decode(parts.list.join(''))
+    const uri = 'internal://files/' + m.name
+    file.writeArrayBuffer({
+      uri,
+      buffer: buf,
+      success: () => this.send({ t: 'img_saved', name: m.name, uri, bytes: buf.length, recvMs: t0 - parts.start, writeMs: Date.now() - t0 }),
+      fail: (d, code) => this.send({ t: 'img_saved', name: m.name, err: code })
+    })
+  },
+
+  tap(id) {
+    this.send({ t: 'ev', id, type: 'click', ts: Date.now() })
+  },
+
+  imgOk(id, e) {
+    this.send({ t: 'img', id, ok: true, w: e && e.width, h: e && e.height })
+  },
+
+  imgErr(id) {
+    this.send({ t: 'img', id, ok: false })
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 212px;
+  flex-direction: column;
+  background-color: #000000;
+}
+
+.status {
+  height: 24px;
+  font-size: 14px;
+  color: #888888;
+  text-align: center;
+}
+
+.stage {
+  flex-direction: column;
+}
+</style>

@@ -1,0 +1,13 @@
+{
+  "name": "miband-pet-render",
+  "version": "1.0.0",
+  "private": true,
+  "description": "小米手环上的通用渲染器：照着 Mac 发来的界面树画，把点击、滑动传回 Mac",
+  "scripts": {
+    "build": "aiot build",
+    "release": "aiot release"
+  },
+  "devDependencies": {
+    "aiot-toolkit": "^2.0.5"
+  }
+}

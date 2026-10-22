@@ -1,0 +1,25 @@
+{
+  "package": "dev.bysir.spike",
+  "name": "渲染实验",
+  "versionName": "0.1.0",
+  "versionCode": 1,
+  "minPlatformVersion": 1200,
+  "icon": "/common/logo.png",
+  "deviceTypeList": ["watch"],
+  "features": [
+    { "name": "system.device" },
+    { "name": "system.file" },
+    { "name": "system.interconnect" }
+  ],
+  "config": {
+    "logLevel": "log",
+    "designWidth": 212
+  },
+  "router": {
+    "entry": "pages/index",
+    "pages": {
+      "pages/index": { "component": "index" }
+    }
+  },
+  "minAPILevel": 2
+}

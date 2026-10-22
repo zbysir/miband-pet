@@ -1,7 +1,0 @@
-<script>
-export default {
-  onCreate() {
-    console.log('[agents] app created')
-  }
-}
-</script>

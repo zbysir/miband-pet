@@ -816,9 +816,110 @@ code {
     cursor: default;
 }
 
-.skin-hint {
-    margin: 8px 0 0;
-    font-size: 12px;
+.plugin-tag {
+    margin-left: 6px;
+}
+
+.plugin-error {
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 120px;
+    overflow: auto;
+}
+
+/* ---------- 今日：小鱼干和额度 ---------- */
+
+.pixel {
+    image-rendering: pixelated;
+}
+
+.today {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.today-big {
+    font-size: 20px;
+    font-weight: 600;
+    color: #e29640;
+}
+
+.week {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin: 14px 0 6px;
+}
+
+.week-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 32px;
+    gap: 3px;
+}
+
+.week-day i {
+    display: block;
+    width: 16px;
+    border-radius: 3px;
+    background: #5c4a3a;
+}
+
+.week-day.today-col i {
+    background: #e29640;
+}
+
+.week-num, .week-label {
+    font-size: 11px;
     color: var(--muted);
-    text-align: center;
+}
+
+.week-day.today-col .week-label {
+    color: var(--text);
+}
+
+.quota {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 13px;
+}
+
+.quota-label {
+    width: 110px;
+}
+
+.quota-bar {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--card-border);
+    overflow: hidden;
+}
+
+.quota-bar i {
+    display: block;
+    height: 100%;
+    background: var(--done);
+}
+
+.quota-bar i.warn {
+    background: var(--blocked);
+}
+
+.quota-bar i.bad {
+    background: var(--danger);
+}
+
+.quota-num {
+    width: 36px;
+    text-align: right;
+}
+
+.setting-label {
+    margin: 14px 0 6px;
+    font-size: 13px;
 }

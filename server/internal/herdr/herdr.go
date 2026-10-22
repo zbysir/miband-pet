@@ -101,13 +101,25 @@ func Events(prev, cur map[string]Agent, withStart bool) []Event {
 	return out
 }
 
-// AppAgent 是推给手环快应用的单个 agent；字段要精简，整条消息要能装进一个数据帧。
+// Finished 数一下有几个 agent 刚跑完（working → done/idle）。
+func Finished(prev, cur map[string]Agent) int {
+	n := 0
+	for pane, a := range cur {
+		if old, ok := prev[pane]; ok && old.Status == "working" && (a.Status == "done" || a.Status == "idle") {
+			n++
+		}
+	}
+	return n
+}
+
+// AppAgent 是推给手环插件的单个 agent；字段要精简，整条消息要能装进一个数据帧。
 type AppAgent struct {
 	ID      string `json:"id"`
 	Agent   string `json:"agent"`
 	Project string `json:"project"`
 	Title   string `json:"title"`
 	Status  string `json:"status"`
+	Since   int64  `json:"since,omitempty"` // 进入当前状态的时间（毫秒），Mac 开始观察之前就是这个状态的为 0
 }
 
 type Snapshot struct {

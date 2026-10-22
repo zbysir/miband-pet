@@ -1,0 +1,46 @@
+<import name="rnode" src="./rnode.ux"></import>
+
+<!-- 方案 A：递归组件。一个 view 节点就是一个 rnode 实例，子节点里的 view 再递归成 rnode -->
+<template>
+  <div id="self" style="{{node.style}}" @click="tap">
+    <block for="{{c in node.children}}">
+      <rnode if="{{c.type === 'view'}}" node="{{c}}"></rnode>
+      <text elif="{{c.type === 'text'}}" style="{{c.style}}">{{c.text}}</text>
+      <image elif="{{c.type === 'image'}}" src="{{c.src}}" style="{{c.style}}" @complete="imgOk(c.id)" @error="imgErr(c.id)"></image>
+    </block>
+  </div>
+</template>
+
+<script>
+export default {
+  props: ['node'],
+
+  onInit() {
+    this.$on('measure', this.measure)
+  },
+
+  onReady() {
+    this.$dispatch('mounted', { id: this.node.id })
+  },
+
+  measure() {
+    const id = this.node.id
+    this.$element('self').getBoundingClientRect({
+      success: (r) => this.$dispatch('rect', { id, r: { l: r.left, t: r.top, w: r.width, h: r.height } }),
+      fail: (d, code) => this.$dispatch('rect', { id, err: code })
+    })
+  },
+
+  tap() {
+    this.$dispatch('ev', { id: this.node.id, type: 'click' })
+  },
+
+  imgOk(id, e) {
+    this.$dispatch('img', { id, ok: true, w: e && e.width, h: e && e.height })
+  },
+
+  imgErr(id) {
+    this.$dispatch('img', { id, ok: false })
+  }
+}
+</script>

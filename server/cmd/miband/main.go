@@ -1,10 +1,10 @@
-// miband：Mac 直连小米手环（经典蓝牙 SPP），把 herdr agent 状态推给手环上的快应用，并在有变化时提醒。
+// miband：Mac 直连小米手环（经典蓝牙 SPP），跑插件、把界面推给手环上的渲染器，agent 有变化时提醒。
 //
-//	miband app                 常驻：推送 agent 列表给快应用；agent 开始跑/跑完/卡住时提醒
+//	miband app                 常驻：跑插件（Agent 猫、Agents 列表和用户插件）；agent 开始跑/跑完/卡住时提醒
 //	miband notify 标题 [正文]   发一条通知
 //	miband apps                列出手环上的第三方快应用
 //	miband install <rpk>       安装快应用并打开
-//	miband launch [包名]        打开快应用（默认宠物版）
+//	miband launch [包名]        打开快应用（默认渲染器）
 //	miband key                 扫码登录小米账号，拉手环的 auth key 和地址写进配置
 //
 // 配置 config.json：{"auth_key": "0x…", "address": "AA:BB:CC:DD:EE:FF", "notify": true, "notify_start": true, "alert": "auto"}
@@ -92,7 +92,7 @@ func run() int {
 			return err
 		})
 	case "launch":
-		pkg := service.PackagePet
+		pkg := service.PackageRender
 		if len(args) > 1 {
 			pkg = args[1]
 		}
