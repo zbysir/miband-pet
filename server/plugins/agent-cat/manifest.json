@@ -1,5 +1,36 @@
 {
   "name": "agent-cat",
   "title": "Agent 猫",
-  "order": 0
+  "order": 0,
+  "permissions": {
+    "read": ["~/.codex/sessions", "~/Library/Application Support/miband-pet"]
+  },
+  "settings": [
+    {
+      "key": "skin",
+      "title": "猫",
+      "type": "select",
+      "options": [
+        { "value": "orange", "label": "橘猫" },
+        { "value": "gray", "label": "灰猫" },
+        { "value": "white", "label": "白猫" }
+      ],
+      "default": "orange"
+    },
+    {
+      "key": "quota",
+      "title": "首页显示哪个额度",
+      "description": "猫的标题下面那根进度条。「今日」页总是显示全部额度。",
+      "type": "select",
+      "options": [
+        { "value": "auto", "label": "用得最多的" },
+        { "value": "claude:5h", "label": "Claude 5h" },
+        { "value": "claude:7d", "label": "Claude 7d" },
+        { "value": "codex:5h", "label": "Codex 5h" },
+        { "value": "codex:7d", "label": "Codex 7d" },
+        { "value": "off", "label": "不显示" }
+      ],
+      "default": "auto"
+    }
+  ]
 }

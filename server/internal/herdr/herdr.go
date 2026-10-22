@@ -128,11 +128,13 @@ type Snapshot struct {
 	Agents []AppAgent `json:"agents"`
 }
 
+// NewSnapshot 按 id 排好序：map 的遍历顺序每次不一样，不排的话内容没变也会被当成新数据，每 3 秒重发一遍给手环
 func NewSnapshot(agents map[string]Agent) *Snapshot {
 	s := &Snapshot{T: "agents", TS: time.Now().UnixMilli(), Agents: make([]AppAgent, 0, len(agents))}
 	for _, a := range agents {
 		s.Agents = append(s.Agents, AppAgent{ID: a.PaneID, Agent: a.Agent, Project: a.Project(), Title: a.Title(), Status: a.Status})
 	}
+	sort.Slice(s.Agents, func(i, j int) bool { return s.Agents[i].ID < s.Agents[j].ID })
 	return s
 }
 

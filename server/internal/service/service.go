@@ -4,11 +4,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -23,7 +24,6 @@ import (
 
 const (
 	pollInterval         = 3 * time.Second
-	usageInterval        = time.Minute
 	reconnectInterval    = 5 * time.Second // 断开后第一次重连的间隔，连续失败就翻倍
 	maxReconnectInterval = time.Minute
 )
@@ -131,6 +131,8 @@ type Service struct {
 	statusline usage.Statusline // 接管 Claude Code 的状态栏拿额度（App 里打开）
 	// 状态变化时回调（界面用来刷新），不要在里面阻塞
 	OnChange func()
+	// 插件数据（store）变化时回调（App 的插件预览用），不要在里面阻塞
+	OnStore func()
 
 	mu         sync.Mutex
 	cfg        Config
@@ -146,7 +148,6 @@ type Service struct {
 	lastWake   time.Time            // 上次把快应用打开到前台（亮屏）的时间
 	since      map[string]sinceInfo // pane → 进入当前状态的时间
 	reminded   map[string]int64     // pane → 已经为哪次卡住（since）再提醒过
-	usage      []usage.Source
 
 	dirty chan struct{} // 有新数据要推，或快应用打开了要一份全量
 }
@@ -187,6 +188,20 @@ func New(cfg Config) (*Service, error) {
 		return s.apps.Send(PackageRender, v)
 	}
 	s.host.OnChange = s.changed
+	s.host.OnStore = func(string) {
+		if s.OnStore != nil {
+			s.OnStore()
+		}
+	}
+	s.host.DataDir = filepath.Join(dataDir, "plugin-data")
+	s.host.NotifyBand = func(title, body string) error {
+		if !s.dev.Connected() {
+			return errNotConnected
+		}
+		return s.dev.Notify(title, body)
+	}
+	s.host.SetGrants(copyGrants(cfg.PluginGrants))
+	s.host.SetConfigs(copyConfigs(cfg.PluginConfig))
 	s.host.Calls["feed"] = func([]any) (any, error) { return nil, s.Feed() }
 	s.pushSettings()
 	s.host.SetStore("stats", s.stats.View(time.Now()))
@@ -217,7 +232,6 @@ func (s *Service) Run(ctx context.Context) error {
 	s.host.Load(plugins.FS, PluginDir())
 	go s.host.Run(ctx)
 	go s.pollHerdr(ctx)
-	go s.pollUsage(ctx)
 	go s.keepAwake(ctx)
 	s.deliver(ctx)
 	return ctx.Err()
@@ -245,7 +259,7 @@ func (s *Service) State() State {
 		Packages:   append([]string{}, s.packages...),
 		Legacy:     append([]string{}, s.legacy...),
 		Stats:      s.stats.View(time.Now()),
-		Usage:      s.usage,
+		Usage:      s.usageLocked(),
 		Plugins:    s.host.Plugins(),
 		PluginDir:  PluginDir(),
 		HerdrError: s.herdrErr,
@@ -316,33 +330,117 @@ func (s *Service) SetClaudeUsage(on bool) error {
 	} else {
 		err = s.statusline.Disable()
 	}
-	s.readUsage()
+	// 让读额度的插件（mac.js 里 on('refresh')）马上重新读一次
+	s.host.CallAll("refresh", nil)
 	s.changed()
 	return err
 }
 
-func (s *Service) pollUsage(ctx context.Context) {
-	for {
-		s.readUsage()
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(usageInterval):
+// usageLocked 汇总各插件 mac.js 推的额度（数据名是 usage 的，即 "<插件名>:usage"），给 App 界面看
+func (s *Service) usageLocked() []usage.Source {
+	var out []usage.Source
+	stores := s.host.Stores()
+	names := make([]string, 0, len(stores))
+	for k := range stores {
+		if strings.HasSuffix(k, ":usage") {
+			names = append(names, k)
 		}
 	}
+	sort.Strings(names)
+	for _, k := range names {
+		var list []usage.Source
+		if json.Unmarshal(stores[k], &list) == nil {
+			out = append(out, list...)
+		}
+	}
+	return out
 }
 
-func (s *Service) readUsage() {
-	home, _ := os.UserHomeDir()
-	list := usage.Read(s.statusline.DataFile(), filepath.Join(home, ".codex", "sessions"), time.Now())
-	s.mu.Lock()
-	s.usage = list
-	s.mu.Unlock()
-	if list == nil {
-		list = []usage.Source{}
+// SetPluginConfig 改插件的一个配置项（App 的设置表单）。
+func (s *Service) SetPluginConfig(plugin, key string, value any) (Config, error) {
+	if err := s.host.SetConfig(plugin, key, value); err != nil {
+		s.mu.Lock()
+		cfg := s.cfg
+		s.mu.Unlock()
+		return cfg, err
 	}
-	s.host.SetStore("usage", list)
+	s.mu.Lock()
+	if s.cfg.PluginConfig == nil {
+		s.cfg.PluginConfig = map[string]map[string]any{}
+	}
+	if s.cfg.PluginConfig[plugin] == nil {
+		s.cfg.PluginConfig[plugin] = map[string]any{}
+	}
+	s.cfg.PluginConfig[plugin][key] = value
+	cfg := s.cfg
+	s.mu.Unlock()
 	s.changed()
+	return cfg, nil
+}
+
+func copyConfigs(m map[string]map[string]any) map[string]map[string]any {
+	out := make(map[string]map[string]any, len(m))
+	for k, v := range m {
+		c := make(map[string]any, len(v))
+		for kk, vv := range v {
+			c[kk] = vv
+		}
+		out[k] = c
+	}
+	return out
+}
+
+// ---------- 插件预览（App 窗口里跑插件） ----------
+
+// PluginBundle 返回插件编译好的界面代码和图片。
+func (s *Service) PluginBundle(name string) (string, map[string][]byte, error) {
+	return s.host.Bundle(name)
+}
+
+// PluginStores 返回所有插件数据。
+func (s *Service) PluginStores() map[string]json.RawMessage {
+	return s.host.Stores()
+}
+
+// PluginCall 处理预览里插件的 call(name, ...args)，和手环上发来的走同一条路。
+func (s *Service) PluginCall(plugin, name string, args []any) error {
+	return s.host.Call(plugin, name, args)
+}
+
+// AllowPlugin 允许插件的 mac.js 用它在 manifest.json 里要的权限。key 是界面上显示时的权限，
+// 和插件现在要的不一样（这期间插件改了）就不生效。
+func (s *Service) AllowPlugin(name, key string) Config {
+	s.mu.Lock()
+	if s.cfg.PluginGrants == nil {
+		s.cfg.PluginGrants = map[string]string{}
+	}
+	s.cfg.PluginGrants[name] = key
+	cfg := s.cfg
+	grants := copyGrants(s.cfg.PluginGrants)
+	s.mu.Unlock()
+	s.host.SetGrants(grants)
+	s.changed()
+	return cfg
+}
+
+// RevokePlugin 收回插件的权限，它的 mac.js 停掉。
+func (s *Service) RevokePlugin(name string) Config {
+	s.mu.Lock()
+	delete(s.cfg.PluginGrants, name)
+	cfg := s.cfg
+	grants := copyGrants(s.cfg.PluginGrants)
+	s.mu.Unlock()
+	s.host.SetGrants(grants)
+	s.changed()
+	return cfg
+}
+
+func copyGrants(m map[string]string) map[string]string {
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 // SetKeepAwake 改「有 agent 等你回答时保持亮屏」的设置。

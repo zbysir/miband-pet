@@ -22,10 +22,10 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"miband/internal/micloud"
-	"miband/plugins"
 	"miband/internal/service"
 	"miband/internal/tray"
 	"miband/internal/xiaomi"
+	"miband/plugins"
 )
 
 // 打包进 App 的手环快应用：渲染器（make app 时从 render-app/dist 复制进来）
@@ -47,8 +47,9 @@ type App struct {
 	installing string
 	progress   float64
 
-	emitMu  sync.Mutex
-	emitDue bool
+	emitMu    sync.Mutex
+	emitDue   bool
+	storesDue bool
 
 	quitting atomic.Bool // 从菜单栏“退出”时为 true；否则关窗口只是隐藏
 
@@ -168,6 +169,7 @@ func (a *App) restartService() {
 	ctx, stop := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	svc.OnChange = a.emitState
+	svc.OnStore = a.emitStores
 	a.svc, a.stop, a.done, a.setupErr = svc, stop, done, ""
 	a.mu.Unlock()
 	go func() {
@@ -175,6 +177,25 @@ func (a *App) restartService() {
 		svc.Run(ctx)
 	}()
 	a.emitState()
+}
+
+// emitStores 通知前端插件数据变了（预览重新拉）；合并短时间内的多次变化。
+func (a *App) emitStores() {
+	a.emitMu.Lock()
+	if a.storesDue {
+		a.emitMu.Unlock()
+		return
+	}
+	a.storesDue = true
+	a.emitMu.Unlock()
+	time.AfterFunc(100*time.Millisecond, func() {
+		a.emitMu.Lock()
+		a.storesDue = false
+		a.emitMu.Unlock()
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "stores")
+		}
+	})
 }
 
 // emitState 通知前端重新拉状态；合并短时间内的多次变化。
@@ -589,6 +610,99 @@ func (a *App) CopyBuiltin(name string) error {
 		return err
 	}
 	return exec.Command("open", dst).Run()
+}
+
+// ---------- 插件 ----------
+
+type PluginBundle struct {
+	Code   string            `json:"code"`
+	Assets map[string]string `json:"assets"` // 路径 → data URL
+}
+
+// PluginBundle 给预览用：插件编译好的界面代码和图片。
+func (a *App) PluginBundle(name string) (*PluginBundle, error) {
+	svc, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	code, assets, err := svc.PluginBundle(name)
+	if err != nil {
+		return nil, err
+	}
+	b := &PluginBundle{Code: code, Assets: map[string]string{}}
+	for path, data := range assets {
+		b.Assets[path] = "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)
+	}
+	return b, nil
+}
+
+// PluginStores 给预览用：所有插件数据（JSON 字符串，前端自己解析，不让 Wails 转类型）。
+func (a *App) PluginStores() (string, error) {
+	svc, err := a.service()
+	if err != nil {
+		return "", err
+	}
+	raw, err := json.Marshal(svc.PluginStores())
+	return string(raw), err
+}
+
+// PluginCall 预览里插件的 call(name, ...args)：和手环上发来的一样，交给 mac.js 或 App 的功能。
+func (a *App) PluginCall(plugin, name string, argsJSON string) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	var args []any
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return err
+	}
+	return svc.PluginCall(plugin, name, args)
+}
+
+// SetPluginConfig 改插件的一个配置项；value 是 JSON（前端传字符串，不让 Wails 转类型）。
+func (a *App) SetPluginConfig(plugin, key, valueJSON string) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	var v any
+	if err := json.Unmarshal([]byte(valueJSON), &v); err != nil {
+		return err
+	}
+	cfg, err := svc.SetPluginConfig(plugin, key, v)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	a.cfg = &cfg
+	a.mu.Unlock()
+	return cfg.Save(a.cfgPath)
+}
+
+// AllowPlugin 允许插件的 mac.js 用它要的权限；key 是界面上显示的那份权限（插件期间改了就不生效）。
+func (a *App) AllowPlugin(name, key string) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	cfg := svc.AllowPlugin(name, key)
+	a.mu.Lock()
+	a.cfg = &cfg
+	a.mu.Unlock()
+	return cfg.Save(a.cfgPath)
+}
+
+// RevokePlugin 收回插件的权限。
+func (a *App) RevokePlugin(name string) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	cfg := svc.RevokePlugin(name)
+	a.mu.Lock()
+	a.cfg = &cfg
+	a.mu.Unlock()
+	return cfg.Save(a.cfgPath)
 }
 
 // SetImpatient 改「卡住超过几分钟猫着急、再提醒一次」，0 表示关。

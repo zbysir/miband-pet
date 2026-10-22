@@ -58,7 +58,7 @@ export function Pet({mood, size, skin = 'orange'}: { mood: Mood, size: number, s
 
     return (
         <img
-            className="pet"
+            className="pixel"
             src={`/pet/${skin}/${mood}_${frame % count}.png`}
             width={size}
             height={size}

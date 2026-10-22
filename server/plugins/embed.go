@@ -3,5 +3,5 @@ package plugins
 
 import "embed"
 
-//go:embed all:agent-cat all:agents all:today
+//go:embed all:agent-cat all:agents
 var FS embed.FS

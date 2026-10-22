@@ -30,7 +30,10 @@ export default function Agents() {
   const screen = useScreen()
   const [page, setPage] = useState(0)
 
-  const sorted = agents.slice().sort((x, y) => (ORDER[x.status] ?? 4) - (ORDER[y.status] ?? 4) || (x.project || '').localeCompare(y.project || ''))
+  // 状态 → 项目 → id：Mac 推来的列表顺序不固定，同一个项目的几个 agent 要靠 id 排稳，不然会在页与页之间跳
+  const sorted = agents.slice().sort((x, y) =>
+    (ORDER[x.status] ?? 4) - (ORDER[y.status] ?? 4) || (x.project || '').localeCompare(y.project || '') || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)
+  )
   const perPage = Math.max(1, Math.floor((screen.height - HEADER_H + CARD_GAP) / (CARD_H + CARD_GAP)))
   const pages = Math.max(1, Math.ceil(sorted.length / perPage))
   const cur = Math.min(page, pages - 1)

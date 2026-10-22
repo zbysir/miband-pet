@@ -32,9 +32,7 @@ export interface Settings {
 
 // 和 Go 侧 service.StatsView 对应
 export interface Stats {
-    today: { done: number, fed: number }
-    fishLeft: number
-    fedTotal: number
+    today: { done: number }
     days: { date: string, weekday: string, done: number }[]
 }
 
@@ -76,6 +74,23 @@ export interface PluginInfo {
     dir: string
     error: string
     active: boolean // 手环上当前显示的是这一页
+    code: string // 代码的哈希，变了预览重新加载
+    hasMac: boolean // 带 mac.js
+    permissions: string[] | null // mac.js 要的权限
+    needGrant: boolean // 要了权限还没允许，mac.js 没跑
+    permKey: string
+    settings: PluginSetting[] | null // manifest.json 里声明的配置项
+    config: Record<string, unknown> | null // 现在的配置
+}
+
+// 和 Go 侧 plugin.Setting 对应
+export interface PluginSetting {
+    key: string
+    title: string
+    description?: string
+    type: 'select' | 'bool' | 'number' | 'text'
+    options?: { value: string, label: string }[]
+    default: unknown
 }
 
 export interface BundledApp {

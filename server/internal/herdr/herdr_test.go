@@ -2,6 +2,7 @@ package herdr
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -46,4 +47,22 @@ func TestListLive(t *testing.T) {
 		t.Fatal("快照不对")
 	}
 	t.Logf("%d 个 agent", len(agents))
+}
+
+func TestNewSnapshotSorted(t *testing.T) {
+	agents := map[string]Agent{}
+	for _, id := range []string{"w1:p9", "w1:p1", "w7:pQ", "w1:p5", "w2:p3"} {
+		agents[id] = Agent{PaneID: id, Status: "idle"}
+	}
+	// map 遍历顺序随机，多跑几次都得是同一个顺序
+	for range 20 {
+		s := NewSnapshot(agents)
+		var ids []string
+		for _, a := range s.Agents {
+			ids = append(ids, a.ID)
+		}
+		if got := strings.Join(ids, ","); got != "w1:p1,w1:p5,w1:p9,w2:p3,w7:pQ" {
+			t.Fatalf("顺序不对：%s", got)
+		}
+	}
 }

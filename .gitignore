@@ -21,3 +21,4 @@ dist/
 /server/app/rpk/*.rpk
 /server/app/frontend/wailsjs/
 /server/app/frontend/package.json.md5
+/server/app/frontend/public/runtime.js

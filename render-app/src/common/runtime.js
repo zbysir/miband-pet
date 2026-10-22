@@ -10,6 +10,7 @@
 //   vibrate(mode)       short / long
 //   storageGet(key) / storageSet(key, value)   插件自己的持久化数据（同步）
 //   call(name, args)    让 Mac 做事（Mac 上注册的功能，如 feed）；不等结果，Mac 会更新对应的数据
+//   scope               插件名 + ':'；useStore(name) 先读本插件 mac.js publish 的（scope + name），没有再读全局的
 //
 // 返回：{ api, mount(component), setStore(name, value), dispatch(id, type), swipe(dir) }
 // api 就是插件里 import ... from 'miband' 拿到的东西。
@@ -168,9 +169,11 @@ module.exports = function createRuntime(host) {
     }, [ms])
   }
 
-  // Mac 推过来的数据：agents、settings 等，变了会重新渲染
+  // Mac 推过来的数据：agents、settings 等，变了会重新渲染。本插件 mac.js publish 的优先；
+  // 别的插件 publish 的用「插件名:数据名」读
   function useStore(name) {
-    return stores[name]
+    const own = host.scope ? stores[host.scope + name] : undefined
+    return own !== undefined ? own : stores[name]
   }
 
   function useSwipe(fn) {
@@ -179,6 +182,11 @@ module.exports = function createRuntime(host) {
 
   function useScreen() {
     return stores.screen || { width: 212, height: 303 }
+  }
+
+  // 插件的配置：manifest.json 里 settings 声明的，用户在 App 里改，Mac 推过来（没改过的是默认值）
+  function useConfig() {
+    return useStore('config') || {}
   }
 
   function unmount(inst) {
@@ -193,6 +201,22 @@ module.exports = function createRuntime(host) {
   const Text = 'text'
   const Image = 'image'
   const Sprite = 'sprite'
+
+  // 翻页容器：每个子元素是一页，手环上是原生的 swiper，翻页跟着手指走。只能是插件界面的最外层。
+  // 不传 index 时自己记住翻到了第几页（重新渲染不跳回去）；传了 index 就由插件控制（配合 onChange 用）。
+  // onChange(index) 在翻页后调用
+  function Pager(props) {
+    const [inner, setInner] = useState(0)
+    const index = props.index !== undefined ? props.index : inner
+    const onChange = props.onChange
+    return h('pager', Object.assign({}, props, {
+      index,
+      onChange: (i) => {
+        setInner(i)
+        if (onChange) onChange(i)
+      }
+    }), props.children)
+  }
 
   const JUSTIFY = { start: 'flex-start', end: 'flex-end', center: 'center', between: 'space-between', around: 'space-around' }
   const ALIGN = { start: 'flex-start', end: 'flex-end', center: 'center', stretch: 'stretch', baseline: 'baseline' }
@@ -221,7 +245,7 @@ module.exports = function createRuntime(host) {
 
   // ---------- 渲染：元素树 → 节点树 ----------
 
-  const TAGS = { view: 'v', text: 'x', image: 'm', sprite: 'a' }
+  const TAGS = { view: 'v', text: 'x', image: 'm', sprite: 'a', pager: 'w' }
   let ids = new Map() // 路径 → 短 id，跨渲染保持稳定（页面按 id 复用元素）
   let idSeq = 0
   let usedIds = null
@@ -302,14 +326,19 @@ module.exports = function createRuntime(host) {
       node.f = (p.frames || []).map((src) => ({ src }))
       node.d = typeof p.duration === 'number' ? p.duration + 'ms' : p.duration || '1000ms'
     }
+    if (t === 'w') {
+      node.vt = p.vertical !== false
+      node.ix = p.index || 0
+    }
     let e = 0
     if (p.onClick) e |= 1
     if (p.onLongPress) e |= 2
+    if (p.onChange && t === 'w') e |= 4
     if (e) {
       node.e = e
-      handlers[node.i] = { click: p.onClick, longpress: p.onLongPress }
+      handlers[node.i] = { click: p.onClick, longpress: p.onLongPress, change: p.onChange }
     }
-    if (t === 'v') {
+    if (t === 'v' || t === 'w') {
       node.c = expand(el.children, path)
       if (p.__gap) {
         const prop = p.__dir === 'row' ? 'margin-left' : 'margin-top'
@@ -327,6 +356,8 @@ module.exports = function createRuntime(host) {
     if (node.u !== undefined) out.u = node.u
     if (node.f !== undefined) out.f = node.f
     if (node.d !== undefined) out.d = node.d
+    if (node.vt !== undefined) out.vt = node.vt
+    if (node.ix !== undefined) out.ix = node.ix
     if (node.e) out.e = node.e
     if (node.c) out.c = node.c.map(finish)
     return out
@@ -362,7 +393,7 @@ module.exports = function createRuntime(host) {
       }
     })
     let tree = null
-    if (nodes.length === 1 && nodes[0].t === 'v') tree = finish(nodes[0])
+    if (nodes.length === 1 && (nodes[0].t === 'v' || nodes[0].t === 'w')) tree = finish(nodes[0])
     else if (nodes.length > 0) tree = finish({ t: 'v', i: 'root', sm: { 'flex-direction': 'column' }, c: nodes })
     host.render(tree)
     const run = effects
@@ -394,6 +425,7 @@ module.exports = function createRuntime(host) {
     Text,
     Image,
     Sprite,
+    Pager,
     Row,
     Col,
     Spacer,
@@ -406,6 +438,7 @@ module.exports = function createRuntime(host) {
     useStore,
     useSwipe,
     useScreen,
+    useConfig,
     asset: (path) => host.asset(path),
     vibrate: (mode) => host.vibrate(mode || 'short'),
     call: (name, ...args) => host.call(name, args),
@@ -433,12 +466,12 @@ module.exports = function createRuntime(host) {
     // 立刻重新渲染（页面切回这个插件时用）
     render,
     // 点击、滑动处理完马上渲染，不等下一轮计时器（手环上计时器要等几十毫秒）
-    dispatch(id, type) {
+    dispatch(id, type, arg) {
       const hd = handlers[id]
       const fn = hd && hd[type]
       if (!fn) return
       try {
-        fn()
+        fn(arg)
       } catch (e) {
         host.error('事件处理出错：' + errText(e))
       }

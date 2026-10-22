@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func write(t *testing.T, path, s string) {
@@ -16,46 +15,6 @@ func write(t *testing.T, path, s string) {
 	}
 	if err := os.WriteFile(path, []byte(s), 0o644); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestReadClaude(t *testing.T) {
-	f := filepath.Join(t.TempDir(), "claude-status.json")
-	write(t, f, `{"model":{"id":"x"},"rate_limits":{"five_hour":{"used_percentage":23.5,"resets_at":2000000000},"seven_day":{"used_percentage":41,"resets_at":1000}}}`)
-	s, err := ReadClaude(f, time.Unix(1500, 0))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// seven_day 已经过了重置时间，不要
-	if len(s.Windows) != 1 || s.Windows[0].Name != "5h" || s.Windows[0].Used != 23.5 || s.Windows[0].ResetsAt != 2000000000 {
-		t.Fatalf("不对：%+v", s.Windows)
-	}
-
-	// API key 用户没有 rate_limits
-	write(t, f, `{"model":{"id":"x"}}`)
-	if s, _ := ReadClaude(f, time.Unix(1500, 0)); len(s.Windows) != 0 {
-		t.Fatalf("没有额度时不该有窗口：%+v", s.Windows)
-	}
-}
-
-func TestReadCodex(t *testing.T) {
-	dir := t.TempDir()
-	write(t, filepath.Join(dir, "2026", "10", "20", "rollout-a.jsonl"), `{"payload":{"rate_limits":{"primary":{"used_percent":99,"window_minutes":10080,"resets_at":2000000000}}}}`+"\n")
-	time.Sleep(20 * time.Millisecond)
-	write(t, filepath.Join(dir, "2026", "10", "21", "rollout-b.jsonl"), strings.Join([]string{
-		`{"timestamp":"2026-10-21T09:00:00Z","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":10,"window_minutes":300,"resets_at":2000000000}}}}`,
-		`{"timestamp":"2026-10-21T09:47:18.099Z","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":20.0,"window_minutes":10080,"resets_at":1793082770},"secondary":null}}}`,
-		`{"timestamp":"2026-10-21T09:48:00Z","payload":{"type":"agent_message"}}`,
-	}, "\n")+"\n")
-	s, err := ReadCodex(dir, time.Unix(1700000000, 0))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(s.Windows) != 1 || s.Windows[0] != (Window{Name: "7d", Used: 20, ResetsAt: 1793082770}) {
-		t.Fatalf("应该读最新文件的最后一条：%+v", s.Windows)
-	}
-	if s.Updated != time.Date(2026, 10, 21, 9, 47, 18, 0, time.UTC).Unix() {
-		t.Fatalf("时间不对：%d", s.Updated)
 	}
 }
 
@@ -98,9 +57,8 @@ func TestStatuslineRoundTrip(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(out)) != "原来的状态栏" {
 		t.Fatalf("原来的状态栏没输出：%v %q", err, out)
 	}
-	c, err := ReadClaude(s.DataFile(), time.Unix(1500, 0))
-	if err != nil || len(c.Windows) != 1 || c.Windows[0].Used != 63 {
-		t.Fatalf("没存下状态栏数据：%v %+v", err, c)
+	if data, err := os.ReadFile(s.DataFile()); err != nil || !strings.Contains(string(data), `"used_percentage":63`) {
+		t.Fatalf("没存下状态栏数据：%v %s", err, data)
 	}
 
 	// 关掉：原样还原

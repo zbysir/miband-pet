@@ -7,11 +7,13 @@
 
 节点字段（插件运行时 src/common/runtime.js 生成）：
     t  类型：v=view（div）  x=text  m=image  a=sprite（image-animator）
+       w=pager（swiper，子节点是一页一页）。只能是根节点：每层都多一种容器的话模板会成倍变大
     i  节点 id，同时用作元素 id 和事件回传
     s  整串 style
     c  子节点（只有 view 有）
     x  文字    u  图片地址    f  动画帧 [{src}]    d  动画时长
-    e  事件位：1=click  2=longpress
+    e  事件位：1=click  2=longpress  4=change（pager 翻页）
+    vt pager 是不是纵向    ix pager 当前第几页
 """
 
 import os
@@ -33,6 +35,14 @@ def leaves(n, ind):
         f'{ind}<image elif="{{{{{n}.t === \'m\'}}}}" id="{{{{{n}.i}}}}" style="{{{{{n}.s}}}}" src="{{{{{n}.u}}}}" {events(n)}></image>',
         f'{ind}<image-animator elif="{{{{{n}.t === \'a\'}}}}" id="{{{{{n}.i}}}}" style="{{{{{n}.s}}}}" images="{{{{{n}.f}}}}" duration="{{{{{n}.d}}}}"></image-animator>',
     ]
+
+
+def swiper_attrs(n):
+    # 原生 swiper：翻页跟着手指走；不循环、不显示自带的小圆点。
+    # index 不绑定：绑定的话翻页 → 插件更新页码 → 写回 index → swiper 再翻一次，会来回跳。
+    # 插件要换页时由页面调 swipeTo（见 index.ux 的 syncPager）
+    return (f'id="{{{{{n}.i}}}}" style="{{{{{n}.s}}}}" vertical="{{{{{n}.vt}}}}" '
+            f'loop="false" indicator="false" @change="pageChange({n}.i, {n}.e)"')
 
 
 def level(parent, depth, ind):
@@ -58,11 +68,13 @@ def template():
         "<template>",
         "  <!-- tools/gen_template.py 生成，不要手改 -->",
         '  <div class="page" style="height: {{pageH}}px" @swipe="onSwipe">',
-        f'    <div if="{{{{root}}}}" id="{{{{root.i}}}}" style="{{{{root.s}}}}" {events("root")}>',
+        f'    <div if="{{{{root && root.t !== \'w\'}}}}" id="{{{{root.i}}}}" style="{{{{root.s}}}}" {events("root")}>',
     ]
     lines += level("root", 1, "      ")
+    lines += ["    </div>", f'    <swiper elif="{{{{root}}}}" {swiper_attrs("root")}>']
+    lines += level("root", 1, "      ")
     lines += [
-        "    </div>",
+        "    </swiper>",
         '    <text if="{{!root}}" class="empty">{{connected ? \'加载中…\' : \'等待 Mac 连接…\'}}</text>',
         '    <text if="{{root && !connected}}" class="offline">未连接 Mac</text>',
         "  </div>",

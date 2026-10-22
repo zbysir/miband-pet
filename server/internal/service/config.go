@@ -26,6 +26,10 @@ type Config struct {
 	KeepAwakeSec int  `json:"keep_awake_sec,omitempty"`
 	// agent 卡住超过几分钟猫就着急，并再提醒一次（默认 5，0 表示关）
 	ImpatientMin *int `json:"impatient_min,omitempty"`
+	// 用户允许过的插件权限：插件名 → 当时的权限（plugin.Permissions.Key()），权限变了要重新允许
+	PluginGrants map[string]string `json:"plugin_grants,omitempty"`
+	// 用户在 App 里改过的插件配置：插件名 → 配置项 → 值（插件在 manifest.json 的 settings 里声明有哪些）
+	PluginConfig map[string]map[string]any `json:"plugin_config,omitempty"`
 }
 
 func (c Config) ImpatientMinutes() int {

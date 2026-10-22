@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useState} from 'react'
 import {CachedDevices, CancelLogin, SaveSetup, StartLogin} from '../wailsjs/go/main/App'
 import {EventsOn} from '../wailsjs/runtime/runtime'
+import {Button} from '@/components/ui/button'
 
 interface Device {
     name: string
@@ -54,39 +55,39 @@ export function LoginPanel({tryCache, onDone}: { tryCache: boolean, onDone: () =
 
     switch (phase.kind) {
         case 'checking':
-            return <p className="muted">正在连接小米账号…</p>
+            return <p className="text-sm text-muted-foreground">正在连接小米账号…</p>
         case 'idle':
-            return <button className="btn btn-primary" onClick={startQR}>扫码登录小米账号</button>
+            return <Button onClick={startQR}>扫码登录小米账号</Button>
         case 'qr':
             return (
-                <div className="login-qr">
-                    <img src={phase.image} width={180} height={180} alt="登录二维码"/>
-                    <p className="muted small">用手机<b>相机</b>或系统<b>「扫一扫」</b>扫码（小米手机直接用相机），然后在手机上确认登录小米账号。不要用小米运动健康扫，它不认这个码。二维码 5 分钟内有效。</p>
+                <div className="flex flex-col items-center gap-3">
+                    <img src={phase.image} width={180} height={180} alt="登录二维码" className="rounded-lg bg-white p-2"/>
+                    <p className="text-xs text-muted-foreground">用手机<b>相机</b>或系统<b>「扫一扫」</b>扫码（小米手机直接用相机），然后在手机上确认登录小米账号。不要用小米运动健康扫，它不认这个码。二维码 5 分钟内有效。</p>
                 </div>
             )
         case 'error':
             return (
-                <div>
-                    <p className="error">{phase.message}</p>
-                    <button className="btn" onClick={startQR}>重新扫码</button>
+                <div className="flex flex-col items-center gap-3">
+                    <p className="text-sm text-destructive">{phase.message}</p>
+                    <Button variant="outline" onClick={startQR}>重新扫码</Button>
                 </div>
             )
         case 'devices': {
             const bands = phase.devices.filter(d => d.authKey)
             if (bands.length === 0) {
-                return <p className="error">账号下没找到手环。先在手机上用小米运动健康绑定一次手环。</p>
+                return <p className="text-sm text-destructive">账号下没找到手环。先在手机上用小米运动健康绑定一次手环。</p>
             }
             return (
-                <div className="device-list">
+                <div className="flex w-full flex-col gap-2">
                     {bands.map(d => (
-                        <div key={d.mac} className="device">
+                        <div key={d.mac} className="flex items-center justify-between rounded-lg border px-4 py-3 text-left">
                             <div>
-                                <div>{d.name}</div>
-                                <div className="muted small">{d.mac}</div>
+                                <div className="text-sm font-medium">{d.name}</div>
+                                <div className="text-xs text-muted-foreground">{d.mac}</div>
                             </div>
-                            <button className="btn btn-primary" disabled={saving} onClick={() => use(d)}>
+                            <Button disabled={saving} onClick={() => use(d)}>
                                 {saving ? '连接中…' : '使用这个手环'}
-                            </button>
+                            </Button>
                         </div>
                     ))}
                 </div>

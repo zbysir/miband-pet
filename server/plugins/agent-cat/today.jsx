@@ -1,14 +1,14 @@
-// 今日：今天完成了几个任务（得了几条小鱼干）、喂了几条，最近 7 天的柱状图，以及 Claude Code / Codex 的额度。
-// 数都是 Mac 记的（useStore('stats')、useStore('usage')），手环没开着时也照样记。
+// 猫的第二屏「今日」：今天完成了几个任务（一个任务一条小鱼干），最近 7 天的柱状图，以及所有额度。
+// 小鱼干是 Mac 记的（useStore('stats')），额度是本插件 mac.js 读的（useStore('usage')）。
 import { View, Text, Image, Row, Col, Spacer, useStore, useScreen, asset } from 'miband'
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
-const CHART_H = 46
+const CHART_H = 40
 const AGENT_NAME = { claude: 'Claude', codex: 'Codex' }
 
-function fmtReset(sec) {
+export function fmtReset(sec) {
   const left = Math.max(0, sec - Date.now() / 1000)
-  if (left >= 86400) return Math.floor(left / 86400) + '天'
+  if (left >= 86400) return Math.floor(left / 86400) + ' 天'
   const h = Math.floor(left / 3600)
   const m = Math.floor((left % 3600) / 60)
   return h + ':' + String(m).padStart(2, '0')
@@ -17,7 +17,7 @@ function fmtReset(sec) {
 function Chart({ days }) {
   const top = Math.max(1, ...days.map((d) => d.done))
   return (
-    <Row justify="between" align="end" style={{ width: 192, marginTop: 10 }}>
+    <Row justify="between" align="end" style={{ width: 192, marginTop: 8 }}>
       {days.map((d, i) => {
         const today = i === days.length - 1
         return (
@@ -47,8 +47,9 @@ function Quota({ label, w }) {
   )
 }
 
-export default function Today() {
-  const stats = useStore('stats') || { today: { done: 0, fed: 0 }, fishLeft: 0, fedTotal: 0, days: [] }
+export function Today() {
+  // 整页一样大，放在 Pager 里当第二屏
+  const stats = useStore('stats') || { today: { done: 0 }, days: [] }
   const usage = useStore('usage') || []
   const screen = useScreen()
   const now = new Date()
@@ -62,21 +63,22 @@ export default function Today() {
         <Spacer />
         <Text style={{ fontSize: 11, color: '#8a8f98' }}>{`${now.getMonth() + 1}月${now.getDate()}日 周${WEEKDAYS[now.getDay()]}`}</Text>
       </Row>
-      <Row align="center" style={{ marginTop: 10 }}>
+      <Row align="center" style={{ marginTop: 8 }}>
         <Image src={asset('assets/fish.png')} style={{ width: 40, height: 20 }} />
         <Col style={{ marginLeft: 10 }}>
           <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#e29640' }}>{`${stats.today.done} 条小鱼干`}</Text>
-          <Text style={{ fontSize: 11, color: '#8a8f98' }}>{`完成 ${stats.today.done} 个任务 · 喂了 ${stats.today.fed} 条`}</Text>
+          <Text style={{ fontSize: 11, color: '#8a8f98' }}>{`今天完成了 ${stats.today.done} 个任务`}</Text>
         </Col>
       </Row>
-      <Text style={{ fontSize: 11, color: '#5c6068', marginTop: 6 }}>{`还剩 ${stats.fishLeft} 条 · 一共喂了 ${stats.fedTotal} 条`}</Text>
       {stats.days.length > 0 && <Chart days={stats.days} />}
-      <Text style={{ fontSize: 12, color: '#8a8f98', marginTop: 12 }}>额度</Text>
+      <Text style={{ fontSize: 12, color: '#8a8f98', marginTop: 10 }}>额度</Text>
       {quotas.length > 0 ? (
         quotas.slice(0, 4).map((q) => <Quota key={q.label} label={q.label} w={q.w} />)
       ) : (
         <Text style={{ fontSize: 10, color: '#5c6068', marginTop: 4 }}>还没有额度数据。Claude Code 的要在 App 里打开「显示 Claude Code 额度」</Text>
       )}
+      <Spacer />
+      <Text style={{ fontSize: 9, color: '#3a3d44', textAlign: 'center' }}>往下翻回到猫</Text>
     </Col>
   )
 }
