@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	pollInterval      = 3 * time.Second
-	reconnectInterval = 5 * time.Second
+	pollInterval         = 3 * time.Second
+	reconnectInterval    = 5 * time.Second // 断开后第一次重连的间隔，连续失败就翻倍
+	maxReconnectInterval = time.Minute
 )
 
 // 手环上接收 agent 列表的快应用：列表版和宠物版，装了哪个就推给哪个
@@ -393,6 +394,8 @@ func (s *Service) ensureConnected(ctx context.Context) {
 	if !s.waitAuthorized(ctx) {
 		return
 	}
+	// 手环长时间不在旁边（或连着手机）时别一直猛试：间隔从 5 秒翻倍到 1 分钟，连上后重置
+	wait := reconnectInterval
 	for !s.dev.Connected() && ctx.Err() == nil {
 		err := s.dev.Connect()
 		if err == nil {
@@ -403,13 +406,14 @@ func (s *Service) ensureConnected(ctx context.Context) {
 			s.markDirty()
 			return
 		}
-		slog.Warn("连接手环失败，稍后重试", "err", err, "retry", reconnectInterval)
+		slog.Warn("连接手环失败，稍后重试", "err", err, "retry", wait)
 		s.dev.Close()
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(reconnectInterval):
+		case <-time.After(wait):
 		}
+		wait = min(wait*2, maxReconnectInterval)
 	}
 }
 

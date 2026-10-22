@@ -52,12 +52,8 @@ func Open(address string, onData func([]byte), onClosed func()) (*Conn, int, err
 	addr := C.CString(strings.ReplaceAll(strings.ToLower(address), ":", "-"))
 	defer C.free(unsafe.Pointer(addr))
 
-	var channelID, mtu C.int
-	if ret := C.bt_open(addr, C.uintptr_t(c.handle), &channelID, &mtu); ret != 0 {
-		c.handle.Delete()
-		mu.Unlock()
-		return nil, 0, describe("打开 RFCOMM", int(ret))
-	}
+	// 整个打开过程在主线程上异步进行（不能在主线程上等：界面也在主线程上），这里等结果
+	C.bt_open(addr, C.uintptr_t(c.handle))
 	select {
 	case r := <-c.opened:
 		if r[0] != 0 {
@@ -65,7 +61,7 @@ func Open(address string, onData func([]byte), onClosed func()) (*Conn, int, err
 			return nil, 0, describe("打开 RFCOMM", r[0])
 		}
 		return c, r[1], nil
-	case <-time.After(15 * time.Second):
+	case <-time.After(20 * time.Second):
 		c.Close()
 		return nil, 0, describe("打开 RFCOMM", -4)
 	}
@@ -98,9 +94,12 @@ func describe(op string, ret int) error {
 	case -3:
 		return fmt.Errorf("%s失败：通道为空", op)
 	case -4:
-		return fmt.Errorf("%s失败：15 秒内没等到通道打开", op)
+		return fmt.Errorf("%s失败：20 秒内没连上", op)
 	case 0xe00002d6 - (1 << 32):
 		return fmt.Errorf("%s失败：超时（手环是不是连着手机，或者不在旁边？）", op)
+	}
+	if ret > 0 && ret < 0x100 { // 打开底层连接回调里给的是 HCI 错误码（页超时等）
+		return fmt.Errorf("%s失败：连不上手环（手环是不是连着手机，或者不在旁边？HCI 0x%02x）", op, ret)
 	}
 	return fmt.Errorf("%s失败 (IOReturn 0x%x)", op, uint32(ret))
 }

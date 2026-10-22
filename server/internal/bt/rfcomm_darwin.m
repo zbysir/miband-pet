@@ -24,78 +24,118 @@ void bt_run_main_loop(void) {
 @property(strong) IOBluetoothDevice *device;
 @property(strong) IOBluetoothRFCOMMChannel *channel;
 @property(assign) uintptr_t handle;
-@property(assign) BOOL openDone;
-@property(assign) IOReturn openStatus;
+@property(assign) BOOL closed; // bt_close 之后晚到的回调一律不管（Go 那边的 handle 已经释放）
 @end
 
+// 打开连接分三步，全靠回调串起来，主线程上不等任何东西：
+// 1. 打开底层连接（openConnection:withPageTimeout:，手环不在旁边时要好几秒才超时）
+// 2. 找 SPP 服务记录（有缓存直接用，没有就异步做 SDP 查询）
+// 3. 异步打开 RFCOMM 通道
+// 任何一步失败或者成功打开，都通过 goRfcommOpened 告诉 Go。
 @implementation MBConn
+- (void)finish:(int)status mtu:(int)mtu {
+    if (!self.closed) {
+        goRfcommOpened(self.handle, status, mtu);
+    }
+}
+
+- (void)start {
+    if (self.device.isConnected) {
+        [self findService];
+        return;
+    }
+    // 页超时单位 0.625ms，0x2000 ≈ 5 秒
+    IOReturn r = [self.device openConnection:self withPageTimeout:0x2000 authenticationRequired:NO];
+    if (r != kIOReturnSuccess) {
+        [self finish:r mtu:0];
+    }
+}
+
+- (void)connectionComplete:(IOBluetoothDevice *)device status:(IOReturn)status {
+    if (self.closed) {
+        return;
+    }
+    if (status != kIOReturnSuccess) {
+        [self finish:status mtu:0];
+        return;
+    }
+    [self findService];
+}
+
+- (void)findService {
+    IOBluetoothSDPServiceRecord *rec = [self.device getServiceRecordForUUID:[IOBluetoothSDPUUID uuid16:kBluetoothSDPUUID16ServiceClassSerialPort]];
+    if (rec != nil) {
+        [self openChannel:rec];
+        return;
+    }
+    IOReturn r = [self.device performSDPQuery:self];
+    if (r != kIOReturnSuccess) {
+        [self finish:r mtu:0];
+    }
+}
+
+- (void)sdpQueryComplete:(IOBluetoothDevice *)device status:(IOReturn)status {
+    if (self.closed) {
+        return;
+    }
+    IOBluetoothSDPServiceRecord *rec = [self.device getServiceRecordForUUID:[IOBluetoothSDPUUID uuid16:kBluetoothSDPUUID16ServiceClassSerialPort]];
+    if (rec == nil) {
+        [self finish:(status != kIOReturnSuccess ? status : -2) mtu:0];
+        return;
+    }
+    [self openChannel:rec];
+}
+
+- (void)openChannel:(IOBluetoothSDPServiceRecord *)rec {
+    BluetoothRFCOMMChannelID cid = 0;
+    IOReturn r = [rec getRFCOMMChannelID:&cid];
+    if (r != kIOReturnSuccess) {
+        [self finish:r mtu:0];
+        return;
+    }
+    // 用异步打开：手环主动连着 Mac 时，同步接口 openRFCOMMChannelSync 会误报 kIOReturnError
+    // （系统日志里通道其实已经连上了），之后的连接全部失败。异步接口等回调就没这个问题。
+    IOBluetoothRFCOMMChannel *channel = nil;
+    r = [self.device openRFCOMMChannelAsync:&channel withChannelID:cid delegate:self];
+    if (r != kIOReturnSuccess || channel == nil) {
+        [self finish:(r != kIOReturnSuccess ? r : -3) mtu:0];
+        return;
+    }
+    self.channel = channel;
+}
+
 - (void)rfcommChannelOpenComplete:(IOBluetoothRFCOMMChannel *)ch status:(IOReturn)error {
-    self.openStatus = error;
-    self.openDone = YES;
-    goRfcommOpened(self.handle, (int)error, (int)[ch getMTU]);
+    [self finish:error mtu:(int)[ch getMTU]];
 }
 - (void)rfcommChannelData:(IOBluetoothRFCOMMChannel *)ch data:(void *)data length:(size_t)length {
-    goRfcommData(self.handle, data, (int)length);
+    if (!self.closed) {
+        goRfcommData(self.handle, data, (int)length);
+    }
 }
 - (void)rfcommChannelClosed:(IOBluetoothRFCOMMChannel *)ch {
-    goRfcommClosed(self.handle);
+    if (!self.closed) {
+        goRfcommClosed(self.handle);
+    }
 }
 @end
 
 // 一个进程同时只连一只手环，用全局变量就够了
 static MBConn *gConn;
 
-int bt_open(const char *address, uintptr_t handle, int *channelID, int *mtu) {
-    __block int ret = 0;
+// bt_open 只是把打开连接的第一步派发到主线程，立刻返回；结果由 goRfcommOpened 通知 Go。
+void bt_open(const char *address, uintptr_t handle) {
     NSString *addr = [NSString stringWithUTF8String:address];
-    runOnBT(^{
+    dispatch_async(dispatch_get_main_queue(), ^{
         MBConn *conn = [MBConn new];
         conn.handle = handle;
         conn.device = [IOBluetoothDevice deviceWithAddressString:addr];
-        if (conn.device == nil) {
-            ret = -1;
-            return;
-        }
-        IOReturn r = [conn.device openConnection];
-        if (r != kIOReturnSuccess) {
-            ret = r;
-            return;
-        }
-        // SDP 查询是异步的，结果靠 run loop 送回来；这里重入 run loop 等它
-        IOBluetoothSDPUUID *spp = [IOBluetoothSDPUUID uuid16:kBluetoothSDPUUID16ServiceClassSerialPort];
-        IOBluetoothSDPServiceRecord *rec = [conn.device getServiceRecordForUUID:spp];
-        if (rec == nil) {
-            [conn.device performSDPQuery:nil];
-            for (int i = 0; i < 50 && rec == nil; i++) {
-                [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
-                rec = [conn.device getServiceRecordForUUID:spp];
-            }
-        }
-        if (rec == nil) {
-            ret = -2;
-            return;
-        }
-        BluetoothRFCOMMChannelID cid = 0;
-        r = [rec getRFCOMMChannelID:&cid];
-        if (r != kIOReturnSuccess) {
-            ret = r;
-            return;
-        }
-        // 用异步打开：手环主动连着 Mac 时，同步接口 openRFCOMMChannelSync 会误报 kIOReturnError
-        // （系统日志里通道其实已经连上了），之后的连接全部失败。异步接口等回调就没这个问题。
-        IOBluetoothRFCOMMChannel *channel = nil;
-        r = [conn.device openRFCOMMChannelAsync:&channel withChannelID:cid delegate:conn];
-        if (r != kIOReturnSuccess || channel == nil) {
-            ret = r != kIOReturnSuccess ? r : -3;
-            return;
-        }
-        // 不能在这里等回调：本块跑在主队列上，回调也走主队列，等就是死锁。结果由 goRfcommOpened 通知 Go。
-        conn.channel = channel;
         gConn = conn;
-        *channelID = cid;
-        *mtu = [channel getMTU];
+        if (conn.device == nil) {
+            [conn finish:-1 mtu:0];
+            return;
+        }
+        [conn start];
     });
-    return ret;
 }
 
 int bt_write(const void *data, int length) {
@@ -127,6 +167,7 @@ void bt_close(void) {
         if (gConn == nil) {
             return;
         }
+        gConn.closed = YES;
         if (gConn.channel != nil) {
             [gConn.channel setDelegate:nil];
             [gConn.channel closeChannel];

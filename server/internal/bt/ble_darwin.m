@@ -45,8 +45,9 @@ static CBUUID *uuidTX(void) { return [CBUUID UUIDWithString:@"0000005F-0000-1000
     if (self.manager.state != CBManagerStatePoweredOn) {
         return; // 等 centralManagerDidUpdateState
     }
-    // 二维码界面的广播不一定带服务 UUID 列表，所以不按服务过滤，自己在回调里认
-    [self.manager scanForPeripheralsWithServices:nil options:@{CBCentralManagerScanOptionAllowDuplicatesKey: @YES}];
+    // 二维码界面的广播不一定带服务 UUID 列表，所以不按服务过滤，自己在回调里认。
+    // 不要重复上报：周围所有蓝牙设备的每条广播都会回调到主线程，量很大
+    [self.manager scanForPeripheralsWithServices:nil options:nil];
 }
 
 - (void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)p
