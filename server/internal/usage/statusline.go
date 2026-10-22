@@ -36,8 +36,8 @@ func (s Statusline) DataFile() string { return filepath.Join(s.Dir, "claude-stat
 func (s Statusline) command() string { return fmt.Sprintf("sh %q", s.script()) }
 
 const wrapper = `#!/bin/sh
-# miband pet 生成：把 Claude Code 传给状态栏的数据存一份（App 从里面读额度），再交给原来的状态栏命令。
-# 在 miband pet 里关掉「显示 Claude Code 额度」会还原原来的设置。
+# wristkit 生成：把 Claude Code 传给状态栏的数据存一份（App 从里面读额度），再交给原来的状态栏命令。
+# 在 wristkit 里关掉「显示 Claude Code 额度」会还原原来的设置。
 dir=$(dirname "$0")
 input=$(cat)
 printf '%s' "$input" > "$dir/claude-status.json.$$" && mv -f "$dir/claude-status.json.$$" "$dir/claude-status.json"

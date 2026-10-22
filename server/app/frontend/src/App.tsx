@@ -150,9 +150,6 @@ function StatusBadge({state}: { state: AppState }) {
     if (!state.connected) {
         text = state.lastError ? '连接失败，重试中' : '正在连接手环…'
         dot = state.lastError ? 'bg-red-500' : 'bg-amber-500'
-    } else if (state.foreground) {
-        const page = state.plugins?.find(p => p.active)
-        text = page ? `手环上正在看${page.title}` : '手环上开着'
     }
     return (
         <Badge variant="outline" title={state.lastError} className="gap-1.5">
@@ -232,10 +229,10 @@ function MenubarCard({state, run}: { state: AppState, run: Run }) {
 // ---------- 提醒 ----------
 
 const ALERT_MODES: { value: AlertMode, label: string, desc: string }[] = [
-    {value: 'auto', label: '自动', desc: '手环上正开着 miband pet 时只亮屏，否则发通知震动'},
-    {value: 'wake', label: '只亮屏', desc: '把手环上的 miband pet 打开到前台，亮屏但不震动'},
+    {value: 'auto', label: '自动', desc: '手环上正开着 wristkit 时只亮屏，否则发通知震动'},
+    {value: 'wake', label: '只亮屏', desc: '把手环上的 wristkit 打开到前台，亮屏但不震动'},
     {value: 'notify', label: '只通知', desc: '发通知，手环震动'},
-    {value: 'both', label: '都要', desc: '打开 miband pet 并发通知'},
+    {value: 'both', label: '都要', desc: '打开 wristkit 并发通知'},
 ]
 
 // 保持亮屏的间隔：手环亮屏最长 60 秒，要比手环上设的亮屏时间短
@@ -271,7 +268,7 @@ function AlertCard({state, run}: { state: AppState, run: Run }) {
                 <Choice value={String(s.impatientMin)} onChange={v => run('保存设置', () => SetImpatient(Number(v)))}
                         options={IMPATIENT_MINS.map(m => ({value: String(m), label: m === 0 ? '不管' : `${m} 分钟`}))}/>
                 <Row title="有 agent 等你回答时保持亮屏"
-                     hint={`每隔 ${s.keepAwakeSec} 秒把手环上的 miband pet 打开一次，手环不熄屏。手环上的亮屏时间要比这个长（最长 60 秒）`}>
+                     hint={`每隔 ${s.keepAwakeSec} 秒把手环上的 wristkit 打开一次，手环不熄屏。手环上的亮屏时间要比这个长（最长 60 秒）`}>
                     <Switch checked={s.keepAwake} onCheckedChange={v => keepAwake(v, s.keepAwakeSec)}/>
                 </Row>
                 <Choice value={String(s.keepAwakeSec)} disabled={!s.keepAwake} onChange={v => keepAwake(true, Number(v))}

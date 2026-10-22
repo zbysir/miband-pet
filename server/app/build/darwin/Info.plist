@@ -20,7 +20,7 @@
         <key>LSMinimumSystemVersion</key>
         <string>10.13.0</string>
         <key>NSBluetoothAlwaysUsageDescription</key>
-        <string>miband pet 通过蓝牙连接小米手环，把 agent 状态显示在手环上。</string>
+        <string>wristkit 通过蓝牙连接小米手环，在手环上跑插件（比如显示 agent 状态的猫）。</string>
         <key>NSHighResolutionCapable</key>
         <string>true</string>
         <key>NSHumanReadableCopyright</key>

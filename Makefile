@@ -1,5 +1,5 @@
-# miband pet 构建入口
-#   make app        构建 macOS App：server/app/build/bin/miband pet.app（包含手环上的渲染器快应用）
+# wristkit 构建入口
+#   make app        构建 macOS App：server/app/build/bin/wristkit.app（包含手环上的渲染器快应用）
 #   make cli        构建命令行版：server/miband
 #   make quickapps  只打包手环上的渲染器快应用（render-app/dist/*.rpk）
 #   make test       跑 Go 测试
@@ -13,8 +13,10 @@ quickapps:
 
 # 本机签名证书（名字见 SIGN_IDENTITY）。macOS 按“标识 + 证书”记蓝牙授权：
 # 不签名的话每次构建签名都变，每次都会重新弹蓝牙授权。证书怎么建见 README。
+# 证书名和 App 标识（dev.bysir.miband-pet）都沿用改名之前的：证书是钥匙串里已经建好的那张，
+# 标识改了 macOS 会当成新 App，要重新授权蓝牙
 SIGN_IDENTITY ?= miband pet local signing
-APP_BUNDLE = server/app/build/bin/miband pet.app
+APP_BUNDLE = server/app/build/bin/wristkit.app
 
 app: quickapps
 	# Mac 窗口里的猫和手环上的 Agent 猫插件用同一套帧

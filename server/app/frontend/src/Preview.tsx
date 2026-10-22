@@ -344,7 +344,7 @@ export function Preview({state, run, plugin, onSelect}: {
                             onClick={() => run('切换', () => ShowPlugin(plugin.name))}>
                         <Watch/>{plugin.active && !!state.foreground ? '手环上正在显示' : '在手环上显示'}
                     </Button>
-                    {/* 把手环上的 miband pet 打开到前台，手环就亮屏了 */}
+                    {/* 把手环上的 wristkit 打开到前台，手环就亮屏了 */}
                     <Button variant="outline" disabled={!state.connected || !state.packages?.length}
                             onClick={() => run('亮屏', () => Launch(state.packages![0]))}>
                         <Sun/>亮屏

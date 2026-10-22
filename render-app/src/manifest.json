@@ -1,6 +1,6 @@
 {
   "package": "dev.bysir.mibandpet",
-  "name": "miband pet",
+  "name": "wristkit",
   "versionName": "2.0.0",
   "versionCode": 1,
   "minPlatformVersion": 1200,

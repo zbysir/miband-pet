@@ -28,7 +28,7 @@ void tray_init(const void *png, int length) {
         NSImage *image = [[NSImage alloc] initWithData:data];
         image.size = NSMakeSize(18, 18); // 图片是 @2x 的 36px
         gItem.button.image = image;
-        gItem.button.toolTip = @"miband pet";
+        gItem.button.toolTip = @"wristkit";
 
         NSMenu *menu = [NSMenu new];
         gInfo = [[NSMenuItem alloc] initWithTitle:@"正在连接手环…" action:nil keyEquivalent:@""];
@@ -39,7 +39,7 @@ void tray_init(const void *png, int length) {
         show.target = gTarget;
         [menu addItem:show];
         [menu addItem:[NSMenuItem separatorItem]];
-        NSMenuItem *quit = [[NSMenuItem alloc] initWithTitle:@"退出 miband pet" action:@selector(quit:) keyEquivalent:@"q"];
+        NSMenuItem *quit = [[NSMenuItem alloc] initWithTitle:@"退出 wristkit" action:@selector(quit:) keyEquivalent:@"q"];
         quit.target = gTarget;
         [menu addItem:quit];
         gItem.menu = menu;

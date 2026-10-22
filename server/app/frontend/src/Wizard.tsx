@@ -157,8 +157,8 @@ function InstallApps({state, bundled, onNext}: { state: AppState, bundled: Bundl
     return (
         <>
             <Pet mood="work" size={112} skin={state.settings?.pet}/>
-            <Title>在手环上装上 miband pet</Title>
-            <Muted>手环上会多出一个应用「miband pet」，Agent 猫、Agents 列表这些都是它里面的插件。</Muted>
+            <Title>在手环上装上 wristkit</Title>
+            <Muted>手环上会多出一个应用「wristkit」，Agent 猫、Agents 列表这些都是它里面的插件。</Muted>
             {bundled.map(b => (
                 <div key={b.package} className="flex w-full items-center justify-between rounded-lg border px-4 py-3 text-sm">
                     <span>{b.name}</span>
@@ -189,7 +189,7 @@ function Done({state, onFinish}: { state: AppState, onFinish: () => void }) {
             <Title>好了！</Title>
             <Muted>
                 手环现在由这台 Mac 连着，手机已经取消了配对，不会再连上来，手机蓝牙可以照常使用。
-                在手环上打开「miband pet」，就能看到 agent 的状态。关掉窗口后，miband pet 会留在菜单栏继续工作。
+                在手环上打开「wristkit」，就能看到 agent 的状态。关掉窗口后，wristkit 会留在菜单栏继续工作。
             </Muted>
             <Button onClick={onFinish}>开始使用</Button>
         </>

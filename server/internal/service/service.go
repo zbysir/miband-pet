@@ -657,9 +657,9 @@ func (s *Service) waitAuthorized(ctx context.Context) bool {
 			return true
 		case bt.AuthNotDetermined:
 			bt.RequestAuthorization()
-			s.setErr(errors.New("请在系统弹窗里允许 miband pet 使用蓝牙"))
+			s.setErr(errors.New("请在系统弹窗里允许 wristkit 使用蓝牙"))
 		default:
-			s.setErr(errors.New("没有蓝牙权限：到 系统设置 → 隐私与安全性 → 蓝牙 里允许 miband pet"))
+			s.setErr(errors.New("没有蓝牙权限：到 系统设置 → 隐私与安全性 → 蓝牙 里允许 wristkit"))
 		}
 		select {
 		case <-ctx.Done():
@@ -833,7 +833,7 @@ func (s *Service) TestNotify() error {
 	if !s.dev.Connected() {
 		return errNotConnected
 	}
-	return s.dev.Notify("miband pet", "测试通知 "+time.Now().Format("15:04:05"))
+	return s.dev.Notify("wristkit", "测试通知 "+time.Now().Format("15:04:05"))
 }
 
 func (s *Service) Launch(pkg string) error {

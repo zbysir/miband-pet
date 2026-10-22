@@ -554,7 +554,7 @@ func (a *App) OpenPluginDir() error {
 	return exec.Command("open", dir).Run()
 }
 
-const pluginReadme = `# miband pet 插件目录
+const pluginReadme = `# wristkit 插件目录
 
 每个子目录是一个插件（manifest.json + index.jsx），保存后自动编译、推到手环。
 内置插件（Agent 猫、今日、Agents）打包在 App 里，不在这个目录；想改的话，在 App 的「插件」里点「复制出来改」，
@@ -576,7 +576,7 @@ const pluginReadme = `# miband pet 插件目录
           )
         }
 
-完整说明：https://github.com/zbysir/miband-pet/blob/main/docs/plugins.md
+完整说明：https://github.com/zbysir/wristkit/blob/main/docs/plugins.md
 `
 
 // CopyBuiltin 把内置插件的源码复制到用户插件目录，方便改；同名的用户插件会替换内置插件。

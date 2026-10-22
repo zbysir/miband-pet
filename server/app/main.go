@@ -1,4 +1,4 @@
-// miband pet 的 macOS App：Wails（系统 WKWebView）+ React。
+// wristkit 的 macOS App：Wails（系统 WKWebView）+ React。
 // 打开 App 就在后台连手环、推送 agent 状态，界面显示状态和设置。构建见仓库根目录 Makefile。
 package main
 
@@ -19,7 +19,7 @@ func main() {
 	// IOBluetooth 的回调投递在主线程 run loop 上；Wails 的 App 本身就在主线程跑 NSApplication，不需要 bt.RunMain
 	app := NewApp()
 	err := wails.Run(&options.App{
-		Title:            "miband pet",
+		Title:            "wristkit",
 		Width:            900,
 		Height:           600,
 		MinWidth:         760,
@@ -33,8 +33,8 @@ func main() {
 		Mac: &mac.Options{
 			TitleBar: mac.TitleBarHiddenInset(),
 			About: &mac.AboutInfo{
-				Title:   "miband pet",
-				Message: "让小米手环变成 AI agent 的状态宠物。\nhttps://github.com/zbysir/miband-pet",
+				Title:   "wristkit",
+				Message: "小米手环上的插件：用 JSX 写，在手环上跑。\nhttps://github.com/zbysir/wristkit",
 			},
 		},
 	})

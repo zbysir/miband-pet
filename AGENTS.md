@@ -1,4 +1,4 @@
-# miband pet
+# wristkit
 
 ## 本体和插件
 

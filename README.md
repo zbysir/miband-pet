@@ -1,148 +1,157 @@
-# miband pet
+# wristkit
 
 <p align="center"><img src="docs/pet.gif" alt="Agent 猫的四种状态：有 agent 卡住时举牌，刚跑完一个时庆祝，有 agent 在跑时敲笔记本，都空闲时睡觉" width="760"></p>
 
-<p align="center"><img src="docs/skins.png" alt="可以换猫：橘猫、灰猫（中华田园猫）、白猫（美短）" width="600"></p>
+小米手环上的插件基座。Mac 通过蓝牙直连手环（不经过手机），手环上只装一个应用，上面显示的都是插件：插件用 JSX 写，保存就推到手环上，不用重装手环上的应用。
 
-让小米手环 10 Pro 变成 AI agent 的状态宠物：Mac 通过蓝牙直连手环（不经过手机），把 [herdr](https://herdr.dev) 管理的 agent 状态显示在手环上。
+自带的插件把 AI agent（[herdr](https://herdr.dev) 管理的 Claude Code、Codex 等）的状态放到手腕上：
 
-手环上只装一个通用的渲染器（`render-app/`），显示的界面都是插件，一次显示一个，在 App 里切换。插件用 JSX 写，由 Mac 编译后推到手环、在手环本地跑；Mac 负责推数据（agents、设置）：
+- **Agent 猫**：一只像素猫代表所有 agent 的整体状态。有 agent 卡住了它举牌，卡太久就着急；跑完一个就庆祝，有在跑的就敲笔记本，都空闲时睡觉。标题下面是 Claude Code / Codex 的额度，右下角的小鱼干是今天完成了几个任务。往上翻是「今日」：最近 7 天的完成数和全部额度。
+- **Agents**：按状态列出每个 agent 的项目和任务。
+- **提醒**：agent 跑完、卡住时手环震一下或亮屏。
 
-- **Agent 猫**（`server/plugins/agent-cat/`）：一只像素猫代表所有 agent 的整体状态，可以在 App 里换成橘猫、灰猫（中华田园猫）或白猫（美短）。有 agent 卡住了它举牌，跑完一个就庆祝，有在跑的就敲笔记本，都空闲时睡觉。
-- **Agents 列表**（`server/plugins/agents/`）：按状态排序，列出每个 agent 的项目和任务，上下滑翻页。
-- **小鱼干**：agent 每跑完一个任务得一条小鱼干，在猫页面点右下角喂猫；猫页面上滑是「今日」，显示今天完成了几个、最近 7 天的柱状图。agent 卡住太久（默认 5 分钟），猫会着急，Mac 再提醒一次。
-- **额度**：猫页面标题下显示最紧的那项额度，「今日」显示全部。Codex 的直接从会话日志读；Claude Code 的要在 App 里打开「显示 Claude Code 额度」（接管状态栏命令拿数据，原来的状态栏照常显示，关掉原样还原）。
-- **自己写插件**：用 JSX 写一个组件放进插件目录，保存就出现在手环上，不用重装手环上的应用；需要读 Mac 上的文件、发通知时再加一个在 Mac 上跑的 `mac.js`。App 里能直接预览、点着调试。见 [docs/plugins.md](docs/plugins.md)。
-- **通知**：agent 开始跑、跑完、卡住时，手环震动提醒。
+<p align="center"><img src="docs/skins.png" alt="猫有三种：橘猫、灰猫（中华田园猫）、白猫（美短）" width="600"></p>
 
 > 非小米官方项目。用的是逆向出来的非官方协议（移植自 Gadgetbridge、OronBox），风险自负。许可证 AGPL-3.0，致谢见 [NOTICE.md](NOTICE.md)。
 
-## macOS App（server/app/）
+## 需要什么
 
-日常用 App 就行：打开后在后台连手环、跑插件，窗口里能看到和手环同步的猫、agent 列表、提醒设置、插件列表，也能一键安装或更新手环上的渲染器（安装包已打包进 App）。
+- 一台 Mac。
+- 小米手环。实测可用的是**小米手环 10 Pro**；其它跑 Xiaomi Vela 的手环 / 手表理论上可以，没试过。
+- 第一次绑定时借用一下手机（小米运动健康），之后就不用了。
+- 想看 agent 状态的话，装 [herdr](https://herdr.dev)。
+
+## 开始使用
+
+目前要自己构建 App（需要 Go、Node.js 和 [Wails](https://wails.io)）：
 
 ```sh
-make app      # 生成 server/app/build/bin/miband pet.app
+make app      # 生成 server/app/build/bin/wristkit.app
 ```
 
-- Wails v2 + React，界面跑在系统自带的 WKWebView 里，不带 Chromium。
-- 第一次打开会进入**连接向导**：
-  1. 借用手机，用小米运动健康绑定一次手环（手环的密钥是绑定时生成的，之后就不用手机了）；
-  2. 在 App 里扫码登录同一个小米账号，自动拿到手环的密钥和地址；
-  3. 在手机系统蓝牙里对手环「取消配对」（不要在小米运动健康里解绑），再在手环上进入「连接新手机」停在二维码界面，App 会自动通过 BLE 连上手环，两边弹出配对确认时点允许；
-  4. 一键把渲染器「miband pet」装到手环上。以前装过的旧版「Agent 猫」「Agents」会显示在「手环上的应用」里，可以卸载。
+第一次打开会进入**连接向导**：
 
-  换手环或手环重新绑定过，点「换手环 / 重新绑定」重走一遍；登录态有缓存，一般不用再扫码。
-- 连接方式：日常走经典蓝牙；连不上（比如手环在「连接新手机」界面）会自动扫描 BLE 再连，之后优先用上次成功的方式。
-- 配置和登录态在 `~/Library/Application Support/miband-pet/`（`config.json`、`session.json`，权限 600）。
-- 关掉窗口后 App 留在菜单栏继续推送（菜单栏的猫头图标），从菜单栏「退出」才会真正退出。
-- **签名**：macOS 按“App 标识 + 签名证书”记蓝牙授权。没签名的话每次构建签名都变，每次都会重新弹蓝牙授权。`make app` 会用钥匙串里名为 `miband pet local signing` 的证书签名，建一次即可：
+1. 借用手机，用小米运动健康绑定一次手环（手环的密钥是绑定时生成的，之后就不用手机了）。
+2. 在 App 里扫码登录同一个小米账号，App 自动拿到手环的密钥和地址。
+3. 在手机的**系统蓝牙**里对手环「取消配对」（不要在小米运动健康里解绑，解绑后密钥会作废），再在手环上进入「连接新手机」停在二维码界面。App 会自动连上手环，两边弹出配对确认时点允许。
+4. 一键把「wristkit」装到手环上。
 
-  ```sh
-  openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 3650 -nodes \
-    -subj "/CN=miband pet local signing" -addext "keyUsage=critical,digitalSignature" \
-    -addext "extendedKeyUsage=critical,codeSigning" -addext "basicConstraints=critical,CA:false"
-  openssl pkcs12 -export -legacy -inkey key.pem -in cert.pem -out cert.p12 -passout pass:tmp
-  security import cert.p12 -k ~/Library/Keychains/login.keychain-db -P tmp -T /usr/bin/codesign
-  rm key.pem cert.pem cert.p12
-  ```
-- App 和命令行版不要同时运行：手环同一时间只接受一个连接。
+之后打开手环上的「wristkit」就能看到猫。换手环或手环重新绑定过，在 App 里点「换手环 / 重新绑定」重走一遍。
 
-## 后端服务（Go，server/）
+## 日常使用
 
-日常用的是 Go 写的 `server/miband`，蓝牙也在里面（cgo 调 macOS IOBluetooth 开经典蓝牙 RFCOMM）：
+- **App 窗口**：左边是手环预览，和手环上跑的是同一份插件、同一份数据，可以直接点、拖动翻页（右键当长按）；「在手环上显示」把手环切到这个插件，「亮屏」把手环点亮。右边是设置：当前插件的设置（比如手环上是哪只猫、首页显示哪个额度）、菜单栏的猫、提醒方式、插件列表。
+- **菜单栏**：关掉窗口后 App 留在菜单栏继续工作（菜单栏上的猫跟着 agent 状态动），从菜单栏「退出」才会真正退出。
+- **提醒**：agent 开始跑、跑完、卡住时提醒。可以选只亮屏（不震动）、只发通知（震动）或都要；「自动」是手环上开着 wristkit 时只亮屏，否则发通知。还可以设「卡住多久算太久」和「有 agent 等你回答时保持亮屏」。
+- **Claude Code 额度**：Codex 的额度直接从它的会话日志读，不用设置。Claude Code 只把额度告诉状态栏命令，要在 App 里打开「显示 Claude Code 额度」：App 会把 Claude Code 的状态栏换成一个小脚本，先存一份数据再交给你原来的状态栏命令，状态栏显示不变；关掉会原样还原，改之前会备份 `~/.claude/settings.json`。只有 Pro / Max 订阅才有额度。
+- **数据放在哪**：`~/Library/Application Support/miband-pet/`。`config.json` 和 `session.json` 是配置和小米账号登录态（权限 600），`stats.json` 是每天完成了几个任务，`plugins/` 是你自己的插件。
+
+> 这个项目以前叫 miband pet。为了不影响已经在用的人，数据目录（`miband-pet`）、App 标识（`dev.bysir.miband-pet`）、手环上应用的包名（`dev.bysir.mibandpet`）都沿用原来的。
+
+## 写插件
+
+插件是一个文件夹，放进插件目录（App 的「插件」里点「打开插件目录」），保存就出现在手环上：
+
+```jsx
+// index.jsx
+import { Col, Text, useState } from 'miband'
+
+export default function Counter() {
+  const [n, setN] = useState(0)
+  return (
+    <Col padding={16}>
+      <Text style={{ fontSize: 18 }} onClick={() => setN(n + 1)}>点了 {n} 下</Text>
+    </Col>
+  )
+}
+```
+
+```json
+// manifest.json
+{ "name": "counter", "title": "计数" }
+```
+
+写法和 React 一样（函数组件 + hooks），布局是 flex。插件的界面在手环上跑，点击、翻页都在手环本地处理；要读 Mac 上的文件、发通知、执行命令，就再写一部分在 Mac 上跑的代码，和手环上的界面互相传数据。插件可以声明配置项，App 会照着画出设置表单。想改内置插件的话，在 App 里点它的「复制出来改」。
+
+完整说明见 [docs/plugins.md](docs/plugins.md)。
+
+## 原理
+
+```
+ Mac（wristkit App）                                     手环（wristkit 应用）
+ ┌─────────────────────────────────────┐   经典蓝牙   ┌─────────────────────────────┐
+ │ 插件宿主：编译插件（esbuild），     │ ───────────▶ │ 通用渲染器：用 new Function │
+ │ 按哈希推代码和图片，推数据          │  代码 / 数据  │ 加载插件，hooks 运行时算出  │
+ │ 插件在 Mac 上跑的部分（goja）       │ ◀─────────── │ 界面树，照着画；点击、翻页  │
+ │ herdr 状态、提醒、菜单栏            │  调用 / 日志  │ 在手环本地处理              │
+ └─────────────────────────────────────┘              └─────────────────────────────┘
+```
+
+- 手环上的快应用模板是编译时定死的，没法动态装组件，所以渲染器的模板把 6 层嵌套都写了出来，界面树的每个节点带一整串 style。
+- 手环的 JS 引擎能执行动态下发的代码（支持到 ES2020），所以插件逻辑放在手环上跑，点击不用走蓝牙往返。
+- 这些能不能做、有哪些限制（单条消息不超过 16KB、新建节点约 10ms 一个、JS 比 Mac 慢上百倍），是先在真机上做实验量出来的，见 [docs/render-spike.md](docs/render-spike.md)。
+
+## 开发
 
 ```sh
-cd server && go build -o miband ./cmd/miband && cd ..
-server/miband app                 # 常驻：跑插件、把界面推给手环；agent 跑完/卡住时发通知
+make app        # 构建 macOS App（含手环上的应用）
+make cli        # 构建命令行版 server/miband
+make quickapps  # 只打包手环上的应用 render-app/dist/*.rpk
+make test       # 跑 Go 测试（插件测试会在 goja 里跑手环上的同一份运行时）
+```
+
+改代码前先看 [AGENTS.md](AGENTS.md)：改动分「本体」和「插件」两层，能在插件里做的就在插件里做。
+
+### 目录
+
+- `server/app/`：macOS App。Wails v2 + React + shadcn/ui，界面跑在系统自带的 WKWebView 里。
+- `server/internal/`
+  - `plugin/`：插件宿主（编译插件、推代码图片和数据、插件在 Mac 上跑的部分、权限、配置、热更新）。
+  - `service/`：常驻服务（连手环、读 herdr、提醒、每日统计）。App 和命令行共用。
+  - `xiaomi/`：小米手环协议（SPP v2 帧、鉴权、AES-CCM/CTR、停等发送、通知、快应用安装和消息）。`go test` 里有个模拟手环做端到端测试，加密结果用 `testdata/vectors.json` 和原 Python 实现对照。
+  - `bt/`：经典蓝牙 RFCOMM 和 BLE（cgo 调 macOS 的蓝牙框架）。
+  - `herdr/`：读 `herdr agent list`、算状态变化。
+  - `usage/`：接管 Claude Code 状态栏拿额度的开关。
+  - `micloud/`：扫码登录小米账号、拉手环密钥。
+- `server/plugins/`：内置插件（Agent 猫、Agents），打包进 App。
+- `render-app/`：手环上的渲染器。运行时在 `src/common/runtime.js`；页面模板由 `tools/gen_template.py` 生成，节点树格式和消息协议写在这两个文件开头。
+- `tools/gen_pet.py`、`tools/gen_fish.py`：逐像素手绘猫和小鱼干（怎么画见 [docs/pixel-cat.md](docs/pixel-cat.md)）。
+- `spike/`、`server/cmd/spike/`：真机实验的代码（[docs/render-spike.md](docs/render-spike.md)）。
+- `*.py`：最早的 Python 实现，留作参考（快应用模式推的是改成插件之前的旧格式）。
+
+### 签名
+
+macOS 按「App 标识 + 签名证书」记蓝牙授权。不签名的话每次构建签名都变，每次都会重新弹蓝牙授权。`make app` 会用钥匙串里名为 `miband pet local signing` 的证书签名（名字沿用改名之前的），建一次即可：
+
+```sh
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 3650 -nodes \
+  -subj "/CN=miband pet local signing" -addext "keyUsage=critical,digitalSignature" \
+  -addext "extendedKeyUsage=critical,codeSigning" -addext "basicConstraints=critical,CA:false"
+openssl pkcs12 -export -legacy -inkey key.pem -in cert.pem -out cert.p12 -passout pass:tmp
+security import cert.p12 -k ~/Library/Keychains/login.keychain-db -P tmp -T /usr/bin/codesign
+rm key.pem cert.pem cert.p12
+```
+
+### 命令行
+
+App 和命令行版不要同时运行：手环同一时间只接受一个连接。
+
+```sh
+server/miband app                 # 常驻：跑插件、推给手环；agent 跑完/卡住时提醒
 server/miband notify 标题 正文     # 发一条通知
 server/miband apps                # 列出手环上的快应用
-server/miband launch [包名]        # 把快应用打开到前台（默认渲染器），手环会亮屏
-server/miband key                 # 扫码登录小米账号，拉手环的 auth key 和地址写进 ./config.json
+server/miband launch [包名]        # 把快应用打开到前台（默认 wristkit），手环会亮屏
+server/miband key                 # 扫码登录小米账号，拉手环的密钥和地址写进 ./config.json
 server/miband install render-app/dist/dev.bysir.mibandpet.debug.*.rpk
 ```
 
-配置读 `./config.json`（或用 `-config` 指定）。agent 开始跑、跑完、卡住时会提醒手环：
+配置读 `./config.json`（或用 `-config` 指定；App 的配置在 `~/Library/Application Support/miband-pet/config.json`）：`auth_key`、`address` 是手环的密钥和地址；`alert` 是提醒方式（`auto` / `wake` / `notify` / `both`）；`notify: false` 完全不提醒，`notify_start: false` 开始跑时不提醒。
 
-- `"alert"`：提醒方式。`"auto"`（默认）：手环上渲染器正在显示时只亮屏、不震动，否则发通知震动；`"wake"` 总是把渲染器打开到前台并切到猫（亮屏不震动）；`"notify"` 总是发通知；`"both"` 两者都要。
-  渲染器在前台时会给 Mac 发 `hello`，离开时（右滑退出、熄屏后回到表盘）发 `bye`，Mac 据此判断。
-- `"notify_start": false`：开始跑时不提醒，只在跑完、卡住时提醒。
-- `"notify": false`：完全不提醒（手环上的界面照常更新）。
+### 踩过的坑
 
-- `internal/bt/`：RFCOMM 桥接。IOBluetooth 的回调只投递到主线程，所以 `main` 里调 `bt.RunMain`，主线程常驻 run loop。
-- `internal/xiaomi/`：协议（SPP v2 帧、鉴权、AES-CCM/CTR、停等发送、通知、快应用安装和消息）。`go test ./...` 里有个模拟手环做端到端测试，加密结果用 `testdata/vectors.json` 和原 Python 实现对照。
-- `internal/herdr/`：读 `herdr agent list`、算状态变化事件。
-- `internal/plugin/`：插件宿主。esbuild 编译插件，按哈希把代码、图片推给手环，推数据；用户插件改了自动重新编译。测试里用 goja 跑手环上的同一份运行时。
-- `plugins/`：内置插件（Agent 猫、Agents 列表），打包进 App。
-
-踩过的坑：
-- **要用异步的 `openRFCOMMChannelAsync`**。手环会把 Mac 当成自己的手机主动连上来，这时同步的 `openRFCOMMChannelSync` 会误报 `kIOReturnError`（系统日志里通道其实已经连上），看起来就像“要重启手环才能连”。
-- 也不能在派发到主队列的块里等这个回调（回调同样走主队列，会死锁）；结果通过 cgo 回调通知 Go。
-- 通道没关就退出会让手环那边卡住，所以程序退出前一定关通道。
-
-Python 版（`main.py`、`get_key.py` 等）是最早的实现，留作参考（它的快应用模式推的是改成插件之前的旧格式）；画猫的 `tools/gen_pet.py` 仍用 Python。
-
-## 准备（以手环 10 Pro 为例，实测可用）
-
-1. 手机上用小米运动健康扫手环的绑定二维码，正常绑定一次。这是唯一需要手机的一步。
-2. 拉 key：在 App 里扫码登录，或者用命令行 `server/miband key`。它从小米健康云拉设备的 `encrypt_key`，连同 MAC 写进配置；登录态有缓存，下次不用再扫码。（`get_key.py` 是早期的 Python 版，留作参考。）
-3. 让手环脱离手机：在手机**系统蓝牙**里取消配对手环，再关掉手机蓝牙。不要在 App 里解绑，解绑后 key 会作废。
-4. 首次接管：手环停在「连接新设备」的二维码界面时会广播 BLE，跑 `transport: "ble2"` 连一次，鉴权成功后 Mac 会和手环完成系统层配对。
-5. 之后把 `transport` 改成 `spp`（经典蓝牙），日常都走这个。连不上时重启一次手环。
-
-几个小知识：
-- 手环 10 系列不回应 SPP v1 的版本探测包，代码超时后会直接开 v2 会话。
-- 账号密码登录（huami-token）会被小米的二次验证拦下，所以 `get_key.py` 改用扫码登录。
-- 小米运动健康 3.59 版的日志里已经没有 key 了。
-
-## 使用
-
-```sh
-python3 -m venv .venv && .venv/bin/pip install bleak cryptography protobuf pyobjc-framework-IOBluetooth \
-    git+https://github.com/argrento/huami-token   # get_key.py 要用
-protoc -Iproto --python_out=. proto/xiaomi.proto proto/vela.proto   # 改了 proto 才需要重新生成
-
-.venv/bin/python main.py scan                 # 找手环，地址可以填进 config.json 的 address，省掉每次扫描
-.venv/bin/python main.py notify 你好 测试      # 发一条通知试试
-.venv/bin/python main.py watch                # 常驻，监听 herdr
-```
-
-`watch` 每 3 秒跑一次 `herdr agent list`，agent 从 working 变成 done/idle，或者变成 blocked 时推送通知；断线后每 15 秒重连一次，没发出去的通知等重连后补发。
-
-第一次运行时 macOS 会请求蓝牙权限，授权对象是你用的终端 App。
-
-## 手环上的渲染器（render-app/）
-
-手环端是一个 Vela JS 快应用，本身不带任何界面：Mac 把编译好的插件代码推过来，它用 `new Function` 加载，插件在手环上跑（hooks 运行时在 `src/common/runtime.js`），点击、翻页都在本地处理。写法见 [docs/plugins.md](docs/plugins.md)。
-
-- 快应用的模板是编译时定死的，所以 `src/pages/index/index.ux` 里把 6 层嵌套都写了出来，由 `tools/gen_template.py` 生成；节点树的格式和消息协议写在这两个文件的开头。
-- 图片（比如猫的帧）由 Mac 按内容哈希推过来，写进 `internal://files/`，推过就不再推。动画用 `image-animator` 在手环本地播。
-- 能不能这么做、有哪些限制（单条消息不超过 16KB、新建节点约 10ms 一个、JS 引擎支持到 ES2020），是先做实验在真机上量出来的，见 [docs/render-spike.md](docs/render-spike.md)。
-- 手环只支持 png/jpg，不支持 GIF 和视频。
-
-```sh
-cd render-app && npm install && npx aiot build && cd ..   # 打包成 dist/*.rpk
-server/miband install render-app/dist/dev.bysir.mibandpet.debug.*.rpk
-```
-
-安装和消息协议参考 OronBox（`vela.py` 文件头有说明）：先 `PREPARE_INSTALL_APP`，再 MASS prepare，分片走明文的 mass 通道，靠 SPP v2 的 ACK 做确认，最后等 `REPORT_INSTALL_RESULT`。给快应用发消息要带包名和签名指纹，指纹从 `GET_INSTALLED_LIST` 拿；快应用打开时会来问「手机端在不在」，要回 `SYNC_PHONE_APP_STATUS=CONNECTED`，否则 interconnect 不会触发 onopen。
-
-## Agent 猫
-
-用一只像素猫表现 agent 的整体状态：有卡住的举牌摇晃，刚完成一个就庆祝 8 秒，有在跑的就敲笔记本，否则睡觉。气泡里显示最值得关注的 agent，点猫或气泡切换。
-
-- 素材由 `tools/gen_pet.py` 生成到 `server/plugins/agent-cat/assets/`：猫是一张逐像素手绘的字符格子图（40×40 像素网格放大 4 倍），三种猫共用格子图和动作帧，只换配色（`SKINS`）；改形象只改这个脚本再重新生成，怎么画、踩过哪些坑见 [docs/pixel-cat.md](docs/pixel-cat.md)。`make app` 会把帧同步到 Mac App 里。
-- 换猫：Mac App 里选，手环上马上换（没推过的帧会推过去，一只猫约 23KB）。
-
-```sh
-.venv/bin/python tools/gen_pet.py [预览图.png]   # 重新生成帧
-```
-
-## 文件
-
-- `miband.py`：协议层（鉴权 HKDF + AES-CCM、对时、发通知）和 BLE 传输
-- `spp.py`：经典蓝牙 SPP v2 传输（IOBluetooth RFCOMM，帧带 CRC16，AES-CTR 加密）
-- `vela.py`：快应用的安装、启动、收发消息
-- `main.py`：命令行入口、herdr 监听（通知模式 `watch` / 快应用模式 `app`）
-- `render-app/`：手环上的渲染器；`server/plugins/`：内置插件
-- `xiaomi_pb2.py` / `vela_pb2.py`：由 `proto/` 下的 proto 生成
+- **经典蓝牙要用异步的 `openRFCOMMChannelAsync`**。手环会把 Mac 当成自己的手机主动连上来，这时同步的 `openRFCOMMChannelSync` 会误报 `kIOReturnError`（通道其实已经连上），看起来就像「要重启手环才能连」。也不能在派发到主队列的块里等这个回调（回调同样走主队列，会死锁）。
+- 通道没关就退出会让手环那边卡住，所以退出前一定关通道。
+- 手环 10 系列不回应 SPP v1 的版本探测包，超时后直接开 v2 会话。
+- 给快应用发消息要带包名和签名指纹（从 `GET_INSTALLED_LIST` 拿）；快应用打开时会来问「手机端在不在」，要回 `SYNC_PHONE_APP_STATUS=CONNECTED`，否则 interconnect 不会触发 onopen。
+- 装快应用：`PREPARE_INSTALL_APP` → MASS prepare → 分片走明文的 mass 通道，靠 SPP v2 的 ACK 确认 → 等 `REPORT_INSTALL_RESULT`。
+- 账号密码登录会被小米的二次验证拦下，所以改用扫码登录；小米运动健康 3.59 版的日志里已经没有密钥了。

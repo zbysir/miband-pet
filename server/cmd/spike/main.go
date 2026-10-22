@@ -2,7 +2,7 @@
 //
 //	go run ./cmd/spike [-config path] [-rpk path] [-tap 60s] [-out report.json]
 //
-// 要先退出 miband pet App（手环同一时间只接受一个连接）。
+// 要先退出 wristkit App（手环同一时间只接受一个连接）。
 package main
 
 import (
