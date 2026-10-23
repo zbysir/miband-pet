@@ -9,7 +9,7 @@ import type {AppState, PluginInfo} from './types'
 
 // 在 Mac 窗口里跑插件：和手环上同一份运行时（render-app/src/common/runtime.js，make app 时复制到 public/runtime.js）、
 // 同一份编译好的插件代码、同一份数据，节点树画成 HTML。点击、长按、上下滑都能在这里调试，call() 也会交给 Mac
-// 上真正的处理函数（mac.js 或 App 的功能）。
+// 上真正的处理函数（server.js 或 App 的功能）。
 
 // 节点树：格式见 render-app/tools/gen_template.py
 interface Node {

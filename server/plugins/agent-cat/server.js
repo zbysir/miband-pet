@@ -5,7 +5,7 @@
 //     ~/Library/Application Support/miband-pet/claude-status.json（server/internal/usage/statusline.go），这里读它。
 //     只有 Pro/Max 订阅才有。
 //   - Codex：会话日志 ~/.codex/sessions/年/月/日/rollout-*.jsonl 里的 token_count 记录自带额度，读最近的一条。
-import { publish, on, readFile, readDir, stat, home } from 'miband/mac'
+import { publish, on, readFile, readDir, stat, home } from 'miband/server'
 import './herdr'
 
 const CLAUDE = home + '/Library/Application Support/miband-pet/claude-status.json'

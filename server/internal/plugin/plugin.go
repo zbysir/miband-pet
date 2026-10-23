@@ -1,8 +1,8 @@
 // Package plugin 是 Mac 这边的插件宿主：编译插件（JSX → JS），把代码、图片和数据（agents、设置）推给手环上的
 // 渲染器（render-app）。插件的界面在手环上跑：点击、useState 都在手环本地处理，不经过 Mac。
-// 插件还可以带一个 mac.js 在 Mac 上跑（见 mac.go）：处理手环发来的 call、推数据给手环、读文件、发通知。
+// 插件还可以带一个 server.js 在 Mac 上跑（见 server.go）：处理手环发来的 call、推数据给手环、读文件、发通知。
 //
-// 一个插件是一个目录：manifest.json + index.jsx（可以再 import 同目录的其它文件）+ png 图片 + 可选的 mac.js。
+// 一个插件是一个目录：manifest.json + index.jsx（可以再 import 同目录的其它文件）+ png 图片 + 可选的 server.js。
 // 内置插件打包在 App 里（server/plugins），用户插件放在 ~/Library/Application Support/miband-pet/plugins/<名字>/，
 // 同名的用户插件会替换内置插件。写插件的说明见 docs/plugins.md。
 package plugin
@@ -26,9 +26,9 @@ type Manifest struct {
 	Title string `json:"title"` // 显示名
 	Order int    `json:"order"` // 在手环上的页序，小的在前；默认 100
 	Main  string `json:"main"`  // 入口文件，默认 index.jsx
-	// mac.js 要用的能力，用户插件要在 App 里允许后 mac.js 才会跑
+	// server.js 要用的能力，用户插件要在 App 里允许后 server.js 才会跑
 	Permissions Permissions `json:"permissions"`
-	// 配置项：App 照着画设置表单，值推给手环（useConfig()）和 mac.js（getConfig()）
+	// 配置项：App 照着画设置表单，值推给手环（useConfig()）和 server.js（getConfig()）
 	Settings []Setting `json:"settings"`
 }
 
@@ -74,7 +74,7 @@ func (s Setting) check(v any) (any, error) {
 	return nil, fmt.Errorf("配置项 %s 不接受 %v", s.Key, v)
 }
 
-// Permissions 是 mac.js 能做的敏感的事。
+// Permissions 是 server.js 能做的敏感的事。
 type Permissions struct {
 	Notify bool     `json:"notify,omitempty"` // 提醒：发通知（Mac 和手环）、点亮手环
 	Read   []string `json:"read,omitempty"`   // 能读哪些目录下的文件（可以用 ~）
@@ -111,10 +111,10 @@ type Plugin struct {
 	Builtin bool
 	Dir     string // 用户插件的目录；内置插件为空
 
-	Code    string            // 代码的哈希（手环上按哈希缓存）
-	Assets  map[string]string // 插件目录里的 png：路径 → 哈希
-	Err     string            // 编译出错
-	MacCode string            // 编译好的 mac.js；没有就是空
+	Code       string            // 代码的哈希（手环上按哈希缓存）
+	Assets     map[string]string // 插件目录里的 png：路径 → 哈希
+	Err        string            // 编译出错
+	ServerCode string            // 编译好的 server.js；没有就是空
 }
 
 func readManifest(fsys fs.FS) (Manifest, error) {
@@ -170,8 +170,8 @@ func compile(fsys fs.FS, dir string, builtin bool, blobs map[string]blob) (*Plug
 	}
 	p.Code = hashOf([]byte(code))
 	blobs[p.Code] = blob{ext: "js", data: []byte(code)}
-	if _, err := fs.Stat(fsys, "mac.js"); err == nil {
-		if p.MacCode, err = buildFor(fsys, "mac.js", "miband/mac"); err != nil {
+	if _, err := fs.Stat(fsys, "server.js"); err == nil {
+		if p.ServerCode, err = buildFor(fsys, "server.js", "miband/server"); err != nil {
 			p.Err = "插件编译失败：" + err.Error()
 			return p, nil
 		}
@@ -198,7 +198,7 @@ func build(fsys fs.FS, main string) (string, error) {
 	return buildFor(fsys, main, "miband")
 }
 
-// buildFor：lib 是运行时提供的模块名（手环上是 miband，Mac 上是 miband/mac）
+// buildFor：lib 是运行时提供的模块名（手环上是 miband，Mac 上是 miband/server）
 func buildFor(fsys fs.FS, main, lib string) (string, error) {
 	exts := []string{"", ".jsx", ".js", ".json", "/index.jsx", "/index.js"}
 	fsPlugin := api.Plugin{Name: "fsys", Setup: func(b api.PluginBuild) {

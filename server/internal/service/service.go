@@ -267,13 +267,13 @@ func (s *Service) SetClaudeUsage(on bool) error {
 	} else {
 		err = s.statusline.Disable()
 	}
-	// 让读额度的插件（mac.js 里 on('refresh')）马上重新读一次
+	// 让读额度的插件（server.js 里 on('refresh')）马上重新读一次
 	s.host.CallAll("refresh", nil)
 	s.changed()
 	return err
 }
 
-// usageLocked 汇总各插件 mac.js 推的额度（数据名是 usage 的，即 "<插件名>:usage"），给 App 界面看
+// usageLocked 汇总各插件 server.js 推的额度（数据名是 usage 的，即 "<插件名>:usage"），给 App 界面看
 func (s *Service) usageLocked() []usage.Source {
 	var out []usage.Source
 	stores := s.host.Stores()
@@ -344,7 +344,7 @@ func (s *Service) PluginCall(plugin, name string, args []any) error {
 	return s.host.Call(plugin, name, args)
 }
 
-// AllowPlugin 允许插件的 mac.js 用它在 manifest.json 里要的权限。key 是界面上显示时的权限，
+// AllowPlugin 允许插件的 server.js 用它在 manifest.json 里要的权限。key 是界面上显示时的权限，
 // 和插件现在要的不一样（这期间插件改了）就不生效。
 func (s *Service) AllowPlugin(name, key string) Config {
 	s.mu.Lock()
@@ -360,7 +360,7 @@ func (s *Service) AllowPlugin(name, key string) Config {
 	return cfg
 }
 
-// RevokePlugin 收回插件的权限，它的 mac.js 停掉。
+// RevokePlugin 收回插件的权限，它的 server.js 停掉。
 func (s *Service) RevokePlugin(name string) Config {
 	s.mu.Lock()
 	delete(s.cfg.PluginGrants, name)

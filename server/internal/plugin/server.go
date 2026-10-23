@@ -20,39 +20,39 @@ import (
 	"github.com/dop251/goja_nodejs/eventloop"
 )
 
-// mac.js 在 Mac 上跑（goja，每个插件一个运行时、一个事件循环），import ... from 'miband/mac' 拿到下面 macAPI 里的东西。
+// server.js 在 Mac 上跑（goja，每个插件一个运行时、一个事件循环），import ... from 'miband/server' 拿到下面 serverAPI 里的东西。
 // 它和手环上的插件配合：手环上 call(name, ...args) 交给这里 on(name, fn) 注册的函数；
 // 这里 publish(name, value)，手环上的插件 useStore(name) 就能读到（只有本插件读得到）。
 // 插件之间不共用数据：getStore / onStore 只能读本插件推的和基座给的（BaseStores）。
-const macAPI = `
+const serverAPI = `
 var __api = {
-  on: function (name, fn) { __mac.on(name, fn) },
-  publish: function (name, value) { __mac.publish(name, JSON.stringify(value === undefined ? null : value)) },
-  getStore: function (name) { var s = __mac.getStore(name); return s ? JSON.parse(s) : undefined },
-  onStore: function (name, fn) { __mac.onStore(name, function (s) { fn(JSON.parse(s)) }) },
-  getConfig: function () { var s = __mac.getStore('config'); return s ? JSON.parse(s) : {} },
-  onConfig: function (fn) { __mac.onStore('config', function (s) { fn(JSON.parse(s)) }) },
-  wakeBand: function () { __mac.wakeBand() },
-  notifyMac: function (title, body) { __mac.notifyMac(String(title), body == null ? '' : String(body)) },
-  notifyBand: function (title, body) { __mac.notifyBand(String(title), body == null ? '' : String(body)) },
-  readFile: function (path, opts) { return __mac.readFile(String(path), (opts && opts.tail) || 0) },
-  readDir: function (path) { return JSON.parse(__mac.readDir(String(path))) },
-  stat: function (path) { var s = __mac.stat(String(path)); return s ? JSON.parse(s) : null },
-  exec: function (cmd, args) { return JSON.parse(__mac.exec(String(cmd), JSON.stringify(args || []))) },
+  on: function (name, fn) { __server.on(name, fn) },
+  publish: function (name, value) { __server.publish(name, JSON.stringify(value === undefined ? null : value)) },
+  getStore: function (name) { var s = __server.getStore(name); return s ? JSON.parse(s) : undefined },
+  onStore: function (name, fn) { __server.onStore(name, function (s) { fn(JSON.parse(s)) }) },
+  getConfig: function () { var s = __server.getStore('config'); return s ? JSON.parse(s) : {} },
+  onConfig: function (fn) { __server.onStore('config', function (s) { fn(JSON.parse(s)) }) },
+  wakeBand: function () { __server.wakeBand() },
+  notifyMac: function (title, body) { __server.notifyMac(String(title), body == null ? '' : String(body)) },
+  notifyBand: function (title, body) { __server.notifyBand(String(title), body == null ? '' : String(body)) },
+  readFile: function (path, opts) { return __server.readFile(String(path), (opts && opts.tail) || 0) },
+  readDir: function (path) { return JSON.parse(__server.readDir(String(path))) },
+  stat: function (path) { var s = __server.stat(String(path)); return s ? JSON.parse(s) : null },
+  exec: function (cmd, args) { return JSON.parse(__server.exec(String(cmd), JSON.stringify(args || []))) },
   storage: {
-    get: function (key) { var s = __mac.storageGet(String(key)); return s ? JSON.parse(s) : undefined },
-    set: function (key, value) { __mac.storageSet(String(key), JSON.stringify(value === undefined ? null : value)) }
+    get: function (key) { var s = __server.storageGet(String(key)); return s ? JSON.parse(s) : undefined },
+    set: function (key, value) { __server.storageSet(String(key), JSON.stringify(value === undefined ? null : value)) }
   },
-  home: __mac.home
+  home: __server.home
 }
 var console = {
-  log: function () { __mac.log('info', Array.prototype.map.call(arguments, String).join(' ')) },
-  warn: function () { __mac.log('warn', Array.prototype.map.call(arguments, String).join(' ')) },
-  error: function () { __mac.log('error', Array.prototype.map.call(arguments, String).join(' ')) }
+  log: function () { __server.log('info', Array.prototype.map.call(arguments, String).join(' ')) },
+  warn: function () { __server.log('warn', Array.prototype.map.call(arguments, String).join(' ')) },
+  error: function () { __server.log('error', Array.prototype.map.call(arguments, String).join(' ')) }
 }
 `
 
-type macRuntime struct {
+type serverRuntime struct {
 	h    *Host
 	p    *Plugin
 	loop *eventloop.EventLoop
@@ -66,8 +66,8 @@ type macRuntime struct {
 	data map[string]json.RawMessage // storage
 }
 
-func startMac(h *Host, p *Plugin) *macRuntime {
-	m := &macRuntime{h: h, p: p, loop: eventloop.NewEventLoop(), handlers: map[string]goja.Callable{}, storeSubs: map[string][]goja.Callable{}}
+func startServer(h *Host, p *Plugin) *serverRuntime {
+	m := &serverRuntime{h: h, p: p, loop: eventloop.NewEventLoop(), handlers: map[string]goja.Callable{}, storeSubs: map[string][]goja.Callable{}}
 	m.loop.Start()
 	m.run(func(vm *goja.Runtime) {
 		m.vm = vm
@@ -78,7 +78,7 @@ func startMac(h *Host, p *Plugin) *macRuntime {
 	return m
 }
 
-func (m *macRuntime) stop() {
+func (m *serverRuntime) stop() {
 	if m.vm != nil {
 		m.vm.Interrupt("插件已停止")
 	}
@@ -86,7 +86,7 @@ func (m *macRuntime) stop() {
 }
 
 // run 在事件循环上执行；死循环之类的跑太久会被打断
-func (m *macRuntime) run(fn func(vm *goja.Runtime)) {
+func (m *serverRuntime) run(fn func(vm *goja.Runtime)) {
 	m.loop.RunOnLoop(func(vm *goja.Runtime) {
 		t := time.AfterFunc(30*time.Second, func() { vm.Interrupt("插件执行超过 30 秒，被打断") })
 		defer t.Stop()
@@ -100,22 +100,22 @@ func (m *macRuntime) run(fn func(vm *goja.Runtime)) {
 	})
 }
 
-func (m *macRuntime) fail(msg string) {
-	slog.Warn("插件 mac.js 出错", "plugin", m.p.Name, "err", msg)
+func (m *serverRuntime) fail(msg string) {
+	slog.Warn("插件 server.js 出错", "plugin", m.p.Name, "err", msg)
 	m.h.mu.Lock()
-	m.h.macErr[m.p.Name] = "插件出错：" + msg
+	m.h.serverErr[m.p.Name] = "插件出错：" + msg
 	m.h.mu.Unlock()
 	m.h.changed()
 }
 
 // throw 让 Go 函数在 JS 里抛异常
-func (m *macRuntime) throw(err error) {
+func (m *serverRuntime) throw(err error) {
 	panic(m.vm.NewGoError(err))
 }
 
-func (m *macRuntime) setup(vm *goja.Runtime) error {
-	mac := vm.NewObject()
-	set := func(name string, fn any) { _ = mac.Set(name, fn) }
+func (m *serverRuntime) setup(vm *goja.Runtime) error {
+	api := vm.NewObject()
+	set := func(name string, fn any) { _ = api.Set(name, fn) }
 	perms := m.p.Permissions
 	set("on", func(name string, fn goja.Callable) { m.handlers[name] = fn })
 	set("publish", func(name, value string) {
@@ -230,21 +230,21 @@ func (m *macRuntime) setup(vm *goja.Runtime) error {
 	set("log", func(level, msg string) {
 		switch level {
 		case "warn", "error":
-			slog.Warn("插件 mac.js", "plugin", m.p.Name, "msg", msg)
+			slog.Warn("插件 server.js", "plugin", m.p.Name, "msg", msg)
 		default:
-			slog.Info("插件 mac.js", "plugin", m.p.Name, "msg", msg)
+			slog.Info("插件 server.js", "plugin", m.p.Name, "msg", msg)
 		}
 	})
 	home, _ := os.UserHomeDir()
 	set("home", home)
 	set("name", m.p.Name)
-	if err := vm.Set("__mac", mac); err != nil {
+	if err := vm.Set("__server", api); err != nil {
 		return err
 	}
-	if _, err := vm.RunScript("miband/mac", macAPI); err != nil {
+	if _, err := vm.RunScript("miband/server", serverAPI); err != nil {
 		return err
 	}
-	fn, err := vm.RunScript(m.p.Name+"/mac.js", "(function (module, exports, require) {\n"+m.p.MacCode+"\n})")
+	fn, err := vm.RunScript(m.p.Name+"/server.js", "(function (module, exports, require) {\n"+m.p.ServerCode+"\n})")
 	if err != nil {
 		return err
 	}
@@ -253,17 +253,17 @@ func (m *macRuntime) setup(vm *goja.Runtime) error {
 	exports := vm.NewObject()
 	_ = module.Set("exports", exports)
 	require := func(name string) goja.Value {
-		if name == "miband/mac" {
+		if name == "miband/server" {
 			return vm.Get("__api")
 		}
-		panic(vm.NewTypeError("mac.js 里只能 require('miband/mac')，不支持 " + name))
+		panic(vm.NewTypeError("server.js 里只能 require('miband/server')，不支持 " + name))
 	}
 	_, err = call(goja.Undefined(), module, exports, vm.ToValue(require))
 	return err
 }
 
 // call 执行 on(name) 注册的函数；没注册返回 false
-func (m *macRuntime) call(name string, args []any) bool {
+func (m *serverRuntime) call(name string, args []any) bool {
 	done := make(chan bool, 1)
 	m.run(func(vm *goja.Runtime) {
 		fn := m.handlers[name]
@@ -289,7 +289,7 @@ func (m *macRuntime) call(name string, args []any) bool {
 }
 
 // storeChanged：Mac 上的数据变了，通知 onStore 订阅了它的函数
-func (m *macRuntime) storeChanged(name, raw string) {
+func (m *serverRuntime) storeChanged(name, raw string) {
 	m.run(func(vm *goja.Runtime) {
 		for _, fn := range m.storeSubs[name] {
 			if _, err := fn(goja.Undefined(), vm.ToValue(raw)); err != nil {
@@ -300,7 +300,7 @@ func (m *macRuntime) storeChanged(name, raw string) {
 }
 
 // allowed：path 在 permissions.read 允许的目录里才能读（跟着符号链接走到最终位置再判断）
-func (m *macRuntime) allowed(path string) (string, error) {
+func (m *serverRuntime) allowed(path string) (string, error) {
 	p, err := filepath.Abs(expandHome(path))
 	if err != nil {
 		return "", err
@@ -356,7 +356,7 @@ func readTail(path string, tail int64) ([]byte, error) {
 }
 
 // storeName：插件读数据时的名字。基座给的（BaseStores）直接读；其它的都是本插件 publish 的
-func (m *macRuntime) storeName(name string) string {
+func (m *serverRuntime) storeName(name string) string {
 	if slices.Contains(BaseStores, name) {
 		return name
 	}
@@ -396,14 +396,14 @@ func appleScriptString(s string) string {
 
 // ---------- storage：每个插件一个 JSON 文件 ----------
 
-func (m *macRuntime) dataPath() string {
+func (m *serverRuntime) dataPath() string {
 	if m.h.DataDir == "" {
 		return ""
 	}
 	return filepath.Join(m.h.DataDir, m.p.Name+".json")
 }
 
-func (m *macRuntime) loadData() {
+func (m *serverRuntime) loadData() {
 	if m.data != nil {
 		return
 	}
@@ -415,14 +415,14 @@ func (m *macRuntime) loadData() {
 	}
 }
 
-func (m *macRuntime) storageGet(key string) string {
+func (m *serverRuntime) storageGet(key string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.loadData()
 	return string(m.data[key])
 }
 
-func (m *macRuntime) storageSet(key, value string) {
+func (m *serverRuntime) storageSet(key, value string) {
 	m.mu.Lock()
 	m.loadData()
 	m.data[key] = json.RawMessage(value)
@@ -431,7 +431,7 @@ func (m *macRuntime) storageSet(key, value string) {
 	if f := m.dataPath(); f != "" {
 		_ = os.MkdirAll(filepath.Dir(f), 0o700)
 		if err := os.WriteFile(f, raw, 0o600); err != nil {
-			slog.Warn("mac.js 存数据失败", "plugin", m.p.Name, "err", err)
+			slog.Warn("server.js 存数据失败", "plugin", m.p.Name, "err", err)
 		}
 	}
 }

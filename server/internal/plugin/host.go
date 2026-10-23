@@ -37,13 +37,13 @@ type Host struct {
 	// OnChange 在插件列表、出错状态、当前页变化时调用（给界面刷新用），不要阻塞。
 	OnChange func()
 	// Calls 是手环上的插件能让 Mac 做的事（插件里 call(name, ...args)），按名字注册。结果不回传：
-	// 要让插件看到变化，就更新对应的 store。插件自己的 mac.js 用 on(name) 注册的优先。
+	// 要让插件看到变化，就更新对应的 store。插件自己的 server.js 用 on(name) 注册的优先。
 	Calls map[string]func(args []any) (any, error)
-	// DataDir 存 mac.js 的 storage 数据；为空则不持久化。
+	// DataDir 存 server.js 的 storage 数据；为空则不持久化。
 	DataDir string
-	// NotifyBand 给手环发通知（mac.js 的 notifyBand）。
+	// NotifyBand 给手环发通知（server.js 的 notifyBand）。
 	NotifyBand func(title, body string) error
-	// Wake 把手环点亮并显示这个插件（mac.js 的 wakeBand）。
+	// Wake 把手环点亮并显示这个插件（server.js 的 wakeBand）。
 	Wake func(plugin string) error
 	// OnStore 在任何数据变化时调用（App 的预览用），不要阻塞。
 	OnStore func(name string)
@@ -56,8 +56,8 @@ type Host struct {
 	blobs      map[string]blob
 	stores     map[string]json.RawMessage
 	runErr     map[string]string // 手环上报的运行错误：插件名 → 错误
-	macErr     map[string]string // mac.js 的错误
-	macs       map[string]*macRuntime
+	serverErr  map[string]string // server.js 的错误
+	servers    map[string]*serverRuntime
 	grants     map[string]string         // 用户允许过的权限：插件名 → Permissions.Key()（内置插件不用问）
 	configs    map[string]map[string]any // 用户改过的配置：插件名 → 配置项 → 值
 	foreground bool                      // 渲染器在手环前台（收到 hello，还没 bye）
@@ -78,8 +78,8 @@ func NewHost() *Host {
 		blobs:     map[string]blob{},
 		stores:    map[string]json.RawMessage{},
 		runErr:    map[string]string{},
-		macErr:    map[string]string{},
-		macs:      map[string]*macRuntime{},
+		serverErr: map[string]string{},
+		servers:   map[string]*serverRuntime{},
 		outStores: map[string]bool{},
 		kick:      make(chan struct{}, 1),
 	}
@@ -97,7 +97,7 @@ func (h *Host) Load(builtin fs.FS, userDir string) {
 func (h *Host) Run(ctx context.Context) {
 	watch := time.NewTicker(2 * time.Second)
 	defer watch.Stop()
-	defer h.stopMacs()
+	defer h.stopServers()
 	for {
 		select {
 		case <-ctx.Done():
@@ -160,14 +160,14 @@ func (h *Host) reload() {
 		}
 		return list[i].Name < list[j].Name
 	})
-	h.stopMacs()
+	h.stopServers()
 	h.mu.Lock()
 	h.plugins, h.blobs, h.userSig = list, blobs, sig
-	h.runErr, h.macErr = map[string]string{}, map[string]string{}
+	h.runErr, h.serverErr = map[string]string{}, map[string]string{}
 	h.outIndex = true
 	h.mu.Unlock()
 	h.publishConfigs()
-	h.startMacs()
+	h.startServers()
 	slog.Info("插件已加载", "count", len(list))
 	h.changed()
 	h.markDirty()
@@ -195,28 +195,28 @@ func (h *Host) userChanged() bool {
 	return dir != "" && dirSignature(dir) != sig
 }
 
-// startMacs 跑各插件的 mac.js：内置插件和没要权限的直接跑，要了权限的用户插件等用户允许。
-func (h *Host) startMacs() {
+// startServers 跑各插件的 server.js：内置插件和没要权限的直接跑，要了权限的用户插件等用户允许。
+func (h *Host) startServers() {
 	h.mu.Lock()
 	list := h.plugins
 	h.mu.Unlock()
 	for _, p := range list {
-		if p.MacCode == "" || p.Err != "" || !h.allowed(p) {
+		if p.ServerCode == "" || p.Err != "" || !h.allowed(p) {
 			continue
 		}
-		m := startMac(h, p)
+		m := startServer(h, p)
 		h.mu.Lock()
-		h.macs[p.Name] = m
+		h.servers[p.Name] = m
 		h.mu.Unlock()
 	}
 }
 
-func (h *Host) stopMacs() {
+func (h *Host) stopServers() {
 	h.mu.Lock()
-	macs := h.macs
-	h.macs = map[string]*macRuntime{}
+	servers := h.servers
+	h.servers = map[string]*serverRuntime{}
 	h.mu.Unlock()
-	for _, m := range macs {
+	for _, m := range servers {
 		m.stop()
 	}
 }
@@ -241,7 +241,7 @@ func (h *Host) SetConfigs(configs map[string]map[string]any) {
 	h.publishConfigs()
 }
 
-// SetConfig 改一个配置项（App 的设置表单），值不合法时返回错误。改完推给手环和 mac.js。
+// SetConfig 改一个配置项（App 的设置表单），值不合法时返回错误。改完推给手环和 server.js。
 func (h *Host) SetConfig(plugin, key string, value any) error {
 	h.mu.Lock()
 	var setting *Setting
@@ -306,37 +306,37 @@ func (h *Host) publishConfigs() {
 	}
 }
 
-// CallAll 让所有在 mac.js 里 on(name) 注册了的插件都执行一遍（比如 App 里开了 Claude 额度后让插件马上刷新）。
+// CallAll 让所有在 server.js 里 on(name) 注册了的插件都执行一遍（比如 App 里开了 Claude 额度后让插件马上刷新）。
 func (h *Host) CallAll(name string, args []any) {
 	h.mu.Lock()
-	macs := make([]*macRuntime, 0, len(h.macs))
-	for _, m := range h.macs {
-		macs = append(macs, m)
+	servers := make([]*serverRuntime, 0, len(h.servers))
+	for _, m := range h.servers {
+		servers = append(servers, m)
 	}
 	h.mu.Unlock()
-	for _, m := range macs {
+	for _, m := range servers {
 		m.call(name, args)
 	}
 }
 
-// SetGrants 设置用户允许过的权限（插件名 → Permissions.Key()），变了就重新跑 mac.js。
+// SetGrants 设置用户允许过的权限（插件名 → Permissions.Key()），变了就重新跑 server.js。
 func (h *Host) SetGrants(grants map[string]string) {
 	h.mu.Lock()
 	h.grants = grants
-	running := h.macs != nil && len(h.plugins) > 0
+	running := h.servers != nil && len(h.plugins) > 0
 	h.mu.Unlock()
 	if running {
 		h.regrant()
 	}
 }
 
-// regrant：权限变了，重新跑 mac.js
+// regrant：权限变了，重新跑 server.js
 func (h *Host) regrant() {
-	h.stopMacs()
+	h.stopServers()
 	h.mu.Lock()
-	h.macErr = map[string]string{}
+	h.serverErr = map[string]string{}
 	h.mu.Unlock()
-	h.startMacs()
+	h.startServers()
 	h.changed()
 }
 
@@ -369,13 +369,13 @@ func (h *Host) SetStore(name string, v any) {
 	}
 	h.stores[name] = raw
 	h.outStores[name] = true
-	macs := make([]*macRuntime, 0, len(h.macs))
-	for _, m := range h.macs {
-		macs = append(macs, m)
+	servers := make([]*serverRuntime, 0, len(h.servers))
+	for _, m := range h.servers {
+		servers = append(servers, m)
 	}
 	h.mu.Unlock()
 	h.markDirty()
-	for _, m := range macs {
+	for _, m := range servers {
 		m.storeChanged(name, string(raw))
 	}
 	if h.OnStore != nil {
@@ -400,11 +400,11 @@ func (h *Host) Stores() map[string]json.RawMessage {
 	return out
 }
 
-// Call 处理插件的 call(name, ...args)：先找插件自己 mac.js 里 on(name) 注册的，再找 Calls。
+// Call 处理插件的 call(name, ...args)：先找插件自己 server.js 里 on(name) 注册的，再找 Calls。
 // 手环发来的和 App 预览里点的都走这里。
 func (h *Host) Call(plugin, name string, args []any) error {
 	h.mu.Lock()
-	m := h.macs[plugin]
+	m := h.servers[plugin]
 	fn := h.Calls[name]
 	h.mu.Unlock()
 	if m != nil && m.call(name, args) {
@@ -589,9 +589,9 @@ type Info struct {
 	Error       string         `json:"error"`
 	Active      bool           `json:"active"` // 手环上当前显示的是这一页
 	Code        string         `json:"code"`   // 代码的哈希，变了预览要重新加载
-	HasMac      bool           `json:"hasMac"`
-	Permissions []string       `json:"permissions"` // mac.js 要的权限（给人看的）
-	NeedGrant   bool           `json:"needGrant"`   // 要了权限还没被允许，mac.js 没跑
+	HasServer   bool           `json:"hasServer"`
+	Permissions []string       `json:"permissions"` // server.js 要的权限（给人看的）
+	NeedGrant   bool           `json:"needGrant"`   // 要了权限还没被允许，server.js 没跑
 	PermKey     string         `json:"permKey"`
 	Settings    []Setting      `json:"settings"` // 配置项
 	Config      map[string]any `json:"config"`   // 现在的配置
@@ -607,13 +607,13 @@ func (h *Host) Plugins() []Info {
 			err = h.runErr[p.Name]
 		}
 		if err == "" {
-			err = h.macErr[p.Name]
+			err = h.serverErr[p.Name]
 		}
-		hasMac := p.MacCode != ""
+		hasServer := p.ServerCode != ""
 		out[i] = Info{
 			Name: p.Name, Title: p.Title, Builtin: p.Builtin, Dir: p.Dir, Error: err, Active: p.Name == h.active, Code: p.Code,
-			HasMac: hasMac, Permissions: p.Permissions.Describe(), PermKey: p.Permissions.Key(),
-			NeedGrant: hasMac && !h.allowedLocked(p),
+			HasServer: hasServer, Permissions: p.Permissions.Describe(), PermKey: p.Permissions.Key(),
+			NeedGrant: hasServer && !h.allowedLocked(p),
 			Settings:  p.Settings, Config: h.configOf(p),
 		}
 	}

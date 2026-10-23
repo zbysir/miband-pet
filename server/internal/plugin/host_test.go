@@ -577,7 +577,7 @@ export default function () { return <Text>好了</Text> }`)
 	}
 }
 
-// ---------- mac.js ----------
+// ---------- server.js ----------
 
 func writePlugin(t *testing.T, dir, name string, files map[string]string) {
 	t.Helper()
@@ -595,7 +595,7 @@ func TestMacJS(t *testing.T) {
 	writePlugin(t, dir, "hello", map[string]string{
 		"manifest.json": `{"name": "hello"}`,
 		"index.jsx":     `export default function () { return null }`,
-		"mac.js": `import { on, publish, getStore, onStore, storage } from 'miband/mac'
+		"server.js": `import { on, publish, getStore, onStore, storage } from 'miband/server'
 on('ping', (n) => {
   storage.set('count', (storage.get('count') || 0) + 1)
   publish('pong', { n: n * 2, count: storage.get('count'), band: getStore('band').connected, other: getStore('other:secret') === undefined })
@@ -615,7 +615,7 @@ onStore('band', (band) => publish('seen', band.foreground))`,
 	}
 	h.SetStore("band", map[string]any{"connected": true, "foreground": true})
 	f.wait(t, func(m map[string]any) bool { return m["t"] == "store" && m["name"] == "hello:seen" && m["v"] == true })
-	if info := h.Plugins(); info[0].Error != "" || !info[0].HasMac || info[0].NeedGrant {
+	if info := h.Plugins(); info[0].Error != "" || !info[0].HasServer || info[0].NeedGrant {
 		t.Fatalf("状态不对：%+v", info[0])
 	}
 }
@@ -629,7 +629,7 @@ func TestMacJSPermissions(t *testing.T) {
 	writePlugin(t, dir, "reader", map[string]string{
 		"manifest.json": fmt.Sprintf(`{"name": "reader", "permissions": {"read": [%q]}}`, allowedDir),
 		"index.jsx":     `export default function () { return null }`,
-		"mac.js": fmt.Sprintf(`import { on, publish, readFile, exec } from 'miband/mac'
+		"server.js": fmt.Sprintf(`import { on, publish, readFile, exec } from 'miband/server'
 on('read', () => publish('ok', readFile(%q)))
 on('steal', () => publish('stolen', readFile(%q)))
 on('run', () => exec('echo', ['hi']))`, filepath.Join(allowedDir, "ok.txt"), secret),
@@ -637,13 +637,13 @@ on('run', () => exec('echo', ['hi']))`, filepath.Join(allowedDir, "ok.txt"), sec
 	h, f := startHost(t, nil, dir)
 	h.HandleMessage(map[string]any{"t": "hello", "have": []any{}})
 
-	// 要了权限、还没允许：mac.js 不跑
+	// 要了权限、还没允许：server.js 不跑
 	info := h.Plugins()[0]
 	if !info.NeedGrant || strings.Join(info.Permissions, ",") != "读 "+allowedDir {
 		t.Fatalf("应该等用户允许：%+v", info)
 	}
 	if err := h.Call("reader", "read", nil); err == nil {
-		t.Fatal("没允许时 mac.js 不该跑")
+		t.Fatal("没允许时 server.js 不该跑")
 	}
 
 	// 允许后：能读允许的目录，读别处、执行命令都不行

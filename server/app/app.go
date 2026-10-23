@@ -608,7 +608,7 @@ func (a *App) PluginStores() (string, error) {
 	return string(raw), err
 }
 
-// PluginCall 预览里插件的 call(name, ...args)：和手环上发来的一样，交给 mac.js 或 App 的功能。
+// PluginCall 预览里插件的 call(name, ...args)：和手环上发来的一样，交给 server.js 或 App 的功能。
 func (a *App) PluginCall(plugin, name string, argsJSON string) error {
 	svc, err := a.service()
 	if err != nil {
@@ -641,7 +641,7 @@ func (a *App) SetPluginConfig(plugin, key, valueJSON string) error {
 	return cfg.Save(a.cfgPath)
 }
 
-// AllowPlugin 允许插件的 mac.js 用它要的权限；key 是界面上显示的那份权限（插件期间改了就不生效）。
+// AllowPlugin 允许插件的 server.js 用它要的权限；key 是界面上显示的那份权限（插件期间改了就不生效）。
 func (a *App) AllowPlugin(name, key string) error {
 	svc, err := a.service()
 	if err != nil {

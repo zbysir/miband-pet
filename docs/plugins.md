@@ -33,7 +33,7 @@ App 里「插件」卡片上有「打开插件目录」。插件目录里的文�
 - `name`：唯一名字。
 - `title`：显示名，出错页和 App 里会用到。
 - `order`：在插件列表里的顺序，小的在前。Agent 猫是 0，不写默认 100。
-- `permissions`：`mac.js` 要用的能力，见下面「Mac 端：mac.js」。
+- `permissions`：`server.js` 要用的能力，见下面「电脑上跑的部分：server.js」。
 - `settings`：插件的配置项，见下面「配置」。
 - `main`：入口文件，默认 `index.jsx`。
 
@@ -107,11 +107,11 @@ export default function Counter() {
 | `useConfig()` | 插件的配置（见下面「配置」），用户在 App 里改了会重新渲染 |
 | `asset(path)` | 插件目录里的 png（路径相对插件目录，如 `assets/a.png`）。图片按内容哈希推到手环，推过就不再推 |
 | `vibrate('short' \| 'long')` | 手环震动（只在这一页正显示时有效） |
-| `call(name, ...args)` | 让本插件的 `mac.js` 做事（交给它 `on(name, fn)` 注册的函数）。不等结果：`mac.js` 做完 `publish` 新数据，`useStore` 读到 |
+| `call(name, ...args)` | 让本插件的 `server.js` 做事（交给它 `on(name, fn)` 注册的函数）。不等结果：`server.js` 做完 `publish` 新数据，`useStore` 读到 |
 | `storage.get(key)` / `storage.set(key, value)` | 插件自己的持久化数据，存在手环上（离开应用时写入） |
 | `setTimeout` `setInterval` `console.log` | 照常用；`console` 的输出会发回 Mac，在 App 的日志里 |
 
-`useStore(name)` 读的是本插件 `mac.js` 里 `publish(name, …)` 推的数据（插件本身在手环上，读不到 Mac 上的文件和命令，要读就写 `mac.js`）。读不到别的插件推的。另外有两项是基座给所有插件的：
+`useStore(name)` 读的是本插件 `server.js` 里 `publish(name, …)` 推的数据（插件本身在手环上，读不到 Mac 上的文件和命令，要读就写 `server.js`）。读不到别的插件推的。另外有两项是基座给所有插件的：
 
 | 名字 | 内容 |
 |---|---|
@@ -120,7 +120,7 @@ export default function Counter() {
 
 ## 配置
 
-插件在 `manifest.json` 的 `settings` 里声明配置项，App 的「插件」卡片照着画出设置表单；用户改了，值推给手环（`useConfig()`）和 mac.js（`getConfig()`），存在 App 的配置文件里。
+插件在 `manifest.json` 的 `settings` 里声明配置项，App 的「插件」卡片照着画出设置表单；用户改了，值推给手环（`useConfig()`）和 server.js（`getConfig()`），存在 App 的配置文件里。
 
 ```json
 "settings": [
@@ -139,13 +139,13 @@ export default function Counter() {
 
 想在手环上直接切换的东西（比如点一下换个显示方式），用 `useState`、`storage` 自己做就行，不用声明成配置。
 
-## Mac 端：mac.js
+## 电脑上跑的部分：server.js
 
-插件的界面在手环上跑，读不到 Mac 上的文件、也不能执行命令。要这些就在插件目录里再放一个 `mac.js`，它在 Mac 上跑（App 里），和手环上的界面配合：
+插件的界面在手环上跑，读不到 Mac 上的文件、也不能执行命令。要这些就在插件目录里再放一个 `server.js`，它在 Mac 上跑（App 里），和手环上的界面配合。手环上的界面像网页前端，`server.js` 像它的后端；它不是网络服务，不开端口：
 
 ```js
-// mac.js
-import { on, publish, notifyMac } from 'miband/mac'
+// server.js
+import { on, publish, notifyMac } from 'miband/server'
 
 on('hello', (who) => {
   notifyMac('手环上点了一下', `来自 ${who}`) // Mac 右上角弹通知
@@ -173,7 +173,7 @@ export default function Hello() {
 { "name": "hello", "title": "你好", "permissions": { "notify": true } }
 ```
 
-`miband/mac` 里有：
+`miband/server` 里有：
 
 | 名字 | 说明 |
 |---|---|
@@ -189,15 +189,15 @@ export default function Hello() {
 | `home` | 用户目录 |
 | `setTimeout` `setInterval` `console.log` | 照常用，`console` 输出在 App 的日志里 |
 
-App 有时会让插件马上刷新数据（比如打开「显示 Claude Code 额度」之后），会调用所有插件 mac.js 里 `on('refresh', fn)` 注册的函数；读外部数据的插件注册一下。
+App 有时会让插件马上刷新数据（比如打开「显示 Claude Code 额度」之后），会调用所有插件 server.js 里 `on('refresh', fn)` 注册的函数；读外部数据的插件注册一下。
 
-**权限**：`manifest.json` 的 `permissions` 里声明 `notify`（发通知、点亮手环）、`read`（能读的目录，可以用 `~`）、`exec`（能执行的命令名，如 `["herdr"]`）。用户插件要了权限的，要在 App 的「插件」里点「允许」，`mac.js` 才会跑；权限改了要重新允许。没要权限的 `mac.js` 直接跑。内置插件不用问。
+**权限**：`manifest.json` 的 `permissions` 里声明 `notify`（发通知、点亮手环）、`read`（能读的目录，可以用 `~`）、`exec`（能执行的命令名，如 `["herdr"]`）。用户插件要了权限的，要在 App 的「插件」里点「允许」，`server.js` 才会跑；权限改了要重新允许。没要权限的 `server.js` 直接跑。内置插件不用问。
 
-例子：Agent 猫插件的 `server/plugins/agent-cat/herdr.js` 每 3 秒跑一次 `herdr agent list`，推 agent 状态、记每天完成了几个、跑完和卡住时提醒；`mac.js` 读 Claude Code 和 Codex 的额度，`publish('usage', …)` 给手环。
+例子：Agent 猫插件的 `server/plugins/agent-cat/herdr.js` 每 3 秒跑一次 `herdr agent list`，推 agent 状态、记每天完成了几个、跑完和卡住时提醒；`server.js` 读 Claude Code 和 Codex 的额度，`publish('usage', …)` 给手环。
 
 ## 在 Mac 上预览和调试
 
-App 里的「插件预览」用和手环上同一份运行时、同一份编译好的代码和数据，把界面画在窗口里：点一下、右键当长按、触控板上下滑当上下滑，`call()` 会真的交给 `mac.js` 处理。改了插件文件，预览自动刷新。不用每次都看手环。
+App 里的「插件预览」用和手环上同一份运行时、同一份编译好的代码和数据，把界面画在窗口里：点一下、右键当长按、触控板上下滑当上下滑，`call()` 会真的交给 `server.js` 处理。改了插件文件，预览自动刷新。不用每次都看手环。
 
 预览里的布局按手环的规则来（只有 flex，div 默认横排），但毕竟是浏览器画的，字体、抗锯齿和手环上会有点差别，最后还是在手环上看一眼。
 
@@ -205,7 +205,7 @@ App 里的「插件预览」用和手环上同一份运行时、同一份编译�
 
 这些限制来自手环，实测数据见 [render-spike.md](render-spike.md)：
 
-- **mac.js 跑在 Mac 上，界面跑在手环上**，两边只能通过 `call` 和 `publish` 传数据（经蓝牙，几十毫秒）。
+- **server.js 跑在 Mac 上，界面跑在手环上**，两边只能通过 `call` 和 `publish` 传数据（经蓝牙，几十毫秒）。
 - **View 最多嵌套 6 层**（根算第 1 层）。超过会显示出错页。
 - **新建节点很慢，约 10ms 一个**；结构不变、只改文字和样式很快。所以一页控制在几十个节点以内，长列表分页（`useSwipe` 翻页），不要每次渲染都换 `key`。
 - **手环的 JS 比 Mac 慢上百倍**（10 万次循环约 0.3 秒）。渲染函数里别做重计算。

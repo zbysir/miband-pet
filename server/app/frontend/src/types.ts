@@ -40,9 +40,9 @@ export interface PluginInfo {
     error: string
     active: boolean // 手环上当前显示的是这一页
     code: string // 代码的哈希，变了预览重新加载
-    hasMac: boolean // 带 mac.js
-    permissions: string[] | null // mac.js 要的权限
-    needGrant: boolean // 要了权限还没允许，mac.js 没跑
+    hasServer: boolean // 带 server.js
+    permissions: string[] | null // server.js 要的权限
+    needGrant: boolean // 要了权限还没允许，server.js 没跑
     permKey: string
     settings: PluginSetting[] | null // manifest.json 里声明的配置项
     config: Record<string, unknown> | null // 现在的配置

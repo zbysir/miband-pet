@@ -1,7 +1,7 @@
-// Agent 猫的 Mac 端（mac.js 引入）：每 3 秒跑一次 herdr agent list，把 agent 状态推给手环；
+// Agent 猫的 Mac 端（server.js 引入）：每 3 秒跑一次 herdr agent list，把 agent 状态推给手环；
 // 数每天完成了几个任务（小鱼干），agent 跑完、卡住时提醒，卡住时可以保持手环亮屏。
 // 没装 herdr 的用户：agent 列表是空的，猫一直睡觉，不报错。
-import { publish, exec, storage, getConfig, onConfig, notifyBand, wakeBand, readFile, home } from 'miband/mac'
+import { publish, exec, storage, getConfig, onConfig, notifyBand, wakeBand, readFile, home } from 'miband/server'
 
 const POLL_MS = 3000
 const NO_HERDR_POLL_MS = 30000 // 没装 herdr 时别一直试
