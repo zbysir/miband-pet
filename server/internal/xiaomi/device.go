@@ -90,6 +90,9 @@ func (d *Device) Connected() bool {
 
 // Connect 打开连接 → 开 v2 session → 鉴权 → 对时。
 func (d *Device) Connect() error {
+	// 上一条连接被动断开时（手环走远、Mac 睡眠）没人调 Close，先关掉：
+	// bt.Open 一次只开一条连接，上一条不关，新的会一直等，表现为一直「正在连接」也不报错
+	d.Close()
 	d.mu.Lock()
 	d.keys, d.authed, d.seq = nil, false, 0
 	d.acks = map[byte]chan bool{}

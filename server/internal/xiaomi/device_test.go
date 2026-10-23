@@ -371,3 +371,47 @@ func TestAppsInstallAndMessage(t *testing.T) {
 		t.Fatalf("状态不对: installed=%v messages=%v syncs=%d", band.installed, band.messages, band.statusSyncs)
 	}
 }
+
+// lockedConn 模拟真的 bt.Open：一个进程同时只能开一条连接，上一条没 Close，新的就一直等
+type lockedConn struct {
+	*fakeBand
+	once   sync.Once
+	unlock func()
+}
+
+func (c *lockedConn) Close() { c.once.Do(c.unlock) }
+
+// 手环走远、Mac 睡眠时连接被动断开，没人调 Close；之后重连不能卡住
+func TestReconnectAfterPassiveClose(t *testing.T) {
+	key := "00112233445566778899aabbccddeeff"
+	secret := make([]byte, 16)
+	copy(secret, h(key))
+	band := &fakeBand{t: t, secret: secret}
+	var one sync.Mutex
+	var closed func()
+	dev, err := NewDevice("0x"+key, "aa:bb", func(addr string, onData func([]byte), onClosed func()) (Transport, error) {
+		one.Lock()
+		band.onData, closed = onData, onClosed
+		return &lockedConn{fakeBand: band, unlock: one.Unlock}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dev.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	closed() // 被动断开
+	if dev.Connected() {
+		t.Fatal("断开后不该是已连接")
+	}
+	done := make(chan error, 1)
+	go func() { done <- dev.Connect() }()
+	select {
+	case err := <-done:
+		if err != nil || !dev.Connected() {
+			t.Fatalf("重连失败：%v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("重连卡住了：上一条连接没关，新连接一直在等")
+	}
+}
