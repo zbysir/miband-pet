@@ -178,6 +178,10 @@ func New(cfg Config) (*Service, error) {
 		}
 		return s.dev.Notify(title, body)
 	}
+	// 「显示 Claude Code 额度」开着的话，状态栏脚本换成这一版，清掉一周没动静的会话文件
+	if err := s.statusline.Refresh(7 * 24 * time.Hour); err != nil {
+		slog.Warn("更新状态栏脚本失败", "err", err)
+	}
 	s.host.Wake = s.wake
 	s.host.SetGrants(copyGrants(cfg.PluginGrants))
 	s.host.SetConfigs(copyConfigs(cfg.PluginConfig))

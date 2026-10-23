@@ -8,12 +8,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Statusline 接管 Claude Code 的状态栏命令，用来拿额度：Claude Code 只把 rate_limits 传给状态栏命令。
 //
 // 打开（Enable）时把 ~/.claude/settings.json 里的 statusLine.command 换成 Dir/statusline.sh：
 // 它先把状态栏数据存到 Dir/claude-status.json，再原样交给原来的状态栏命令，状态栏显示不变。
+// 同时按会话各存一份 Dir/claude-sessions/<会话 id>.json：同时开着几个会话时 claude-status.json 只留最后刷新的那个，
+// 按会话记花了多少钱（Agent 猫插件的 cost.js）要每个会话都看得到。
 // 原来的 statusLine 存在 Dir/statusline-orig.json，关掉（Disable）时原样还原。
 // 改 settings.json 之前备份到 settings.json.bak-miband-pet，只改 statusLine 这一项，其它键的顺序不变。
 type Statusline struct {
@@ -30,6 +33,9 @@ func (s Statusline) script() string   { return filepath.Join(s.Dir, "statusline.
 func (s Statusline) origFile() string { return filepath.Join(s.Dir, "statusline-orig.json") }
 func (s Statusline) origCmd() string  { return filepath.Join(s.Dir, "statusline-orig.cmd") }
 
+// SessionDir 是按会话存的状态栏数据：<会话 id>.json
+func (s Statusline) SessionDir() string { return filepath.Join(s.Dir, "claude-sessions") }
+
 // DataFile 是状态栏数据存的位置（Read 从这里读 Claude 的额度）。
 func (s Statusline) DataFile() string { return filepath.Join(s.Dir, "claude-status.json") }
 
@@ -40,7 +46,14 @@ const wrapper = `#!/bin/sh
 # 在 wristkit 里关掉「显示 Claude Code 额度」会还原原来的设置。
 dir=$(dirname "$0")
 input=$(cat)
+# 先写临时文件再改名：几个会话同时写也不会写坏
 printf '%s' "$input" > "$dir/claude-status.json.$$" && mv -f "$dir/claude-status.json.$$" "$dir/claude-status.json"
+# 按会话各存一份；会话 id 只认字母数字和 -_，免得拼出别的路径
+sid=$(printf '%s' "$input" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([A-Za-z0-9_-]*\)".*/\1/p' | head -n 1)
+if [ -n "$sid" ]; then
+  mkdir -p "$dir/claude-sessions"
+  printf '%s' "$input" > "$dir/claude-sessions/$sid.json.$$" && mv -f "$dir/claude-sessions/$sid.json.$$" "$dir/claude-sessions/$sid.json"
+fi
 if [ -s "$dir/statusline-orig.cmd" ]; then
   printf '%s' "$input" | sh -c "$(cat "$dir/statusline-orig.cmd")"
 fi
@@ -143,6 +156,26 @@ func (s Statusline) Disable() error {
 	}
 	for _, f := range []string{s.script(), s.origFile(), s.origCmd(), s.DataFile()} {
 		_ = os.Remove(f)
+	}
+	return os.RemoveAll(s.SessionDir())
+}
+
+// Refresh：开着的话把脚本换成这一版（App 升级后脚本可能是旧的），再清掉 maxAge 没刷新过的会话文件。App 启动时调用。
+func (s Statusline) Refresh(maxAge time.Duration) error {
+	if !s.Enabled() {
+		return nil
+	}
+	if err := s.Enable(); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(s.SessionDir())
+	if err != nil {
+		return nil // 还没有会话文件
+	}
+	for _, e := range entries {
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > maxAge {
+			_ = os.Remove(filepath.Join(s.SessionDir(), e.Name()))
+		}
 	}
 	return nil
 }

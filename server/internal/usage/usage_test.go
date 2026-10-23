@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func write(t *testing.T, path, s string) {
@@ -52,13 +53,37 @@ func TestStatuslineRoundTrip(t *testing.T) {
 
 	// 跑一遍状态栏命令：数据存下来，原来的状态栏照常输出
 	cmd := exec.Command("sh", "-c", s.command())
-	cmd.Stdin = strings.NewReader(`{"rate_limits":{"five_hour":{"used_percentage":63,"resets_at":2000000000}}}`)
+	cmd.Stdin = strings.NewReader(`{"session_id": "abc-123", "rate_limits":{"five_hour":{"used_percentage":63,"resets_at":2000000000}}}`)
 	out, err := cmd.CombinedOutput()
 	if err != nil || strings.TrimSpace(string(out)) != "原来的状态栏" {
 		t.Fatalf("原来的状态栏没输出：%v %q", err, out)
 	}
 	if data, err := os.ReadFile(s.DataFile()); err != nil || !strings.Contains(string(data), `"used_percentage":63`) {
 		t.Fatalf("没存下状态栏数据：%v %s", err, data)
+	}
+	if data, err := os.ReadFile(filepath.Join(s.SessionDir(), "abc-123.json")); err != nil || !strings.Contains(string(data), `"used_percentage":63`) {
+		t.Fatalf("没按会话存一份：%v %s", err, data)
+	}
+	// 会话 id 里有别的字符：不按会话存（免得拼出别的路径）
+	cmd = exec.Command("sh", "-c", s.command())
+	cmd.Stdin = strings.NewReader(`{"session_id":"../../evil"}`)
+	_, _ = cmd.CombinedOutput()
+	if entries, _ := os.ReadDir(s.SessionDir()); len(entries) != 1 {
+		t.Fatalf("会话目录里应该只有一个文件：%v", entries)
+	}
+
+	// 启动时清掉很久没刷新的会话文件
+	stale := filepath.Join(s.SessionDir(), "old.json")
+	write(t, stale, "{}")
+	_ = os.Chtimes(stale, time.Now().Add(-8*24*time.Hour), time.Now().Add(-8*24*time.Hour))
+	if err := s.Refresh(7 * 24 * time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatal("旧的会话文件没清掉")
+	}
+	if _, err := os.Stat(filepath.Join(s.SessionDir(), "abc-123.json")); err != nil {
+		t.Fatal("新的会话文件不该清")
 	}
 
 	// 关掉：原样还原
@@ -71,6 +96,9 @@ func TestStatuslineRoundTrip(t *testing.T) {
 	}
 	if _, err := os.Stat(s.script()); !os.IsNotExist(err) {
 		t.Fatal("脚本没删")
+	}
+	if _, err := os.Stat(s.SessionDir()); !os.IsNotExist(err) {
+		t.Fatal("会话目录没删")
 	}
 }
 

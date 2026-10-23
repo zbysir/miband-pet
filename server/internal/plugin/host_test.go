@@ -817,3 +817,78 @@ func TestAgentCatHerdr(t *testing.T) {
 		t.Fatalf("猫插件出错：%s", e)
 	}
 }
+
+// Agent 猫记 Claude Code 每天花了多少钱：按会话看状态栏数据里的累计钱数，涨了多少记多少
+func TestAgentCatCost(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", t.TempDir()) // 没有 herdr
+	dir := filepath.Join(home, "Library/Application Support/miband-pet")
+	_ = os.MkdirAll(dir, 0o755)
+	file := filepath.Join(dir, "claude-status.json")
+	write := func(session string, usd float64, startedAgo time.Duration, at time.Time) {
+		raw := fmt.Sprintf(`{"session_id":%q,"cost":{"total_cost_usd":%v,"total_duration_ms":%d}}`, session, usd, startedAgo.Milliseconds())
+		if err := os.WriteFile(file, []byte(raw), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Chtimes(file, at, at) // 每次写的修改时间不一样，插件才知道更新了
+	}
+	now := time.Now()
+	// 开始记账之前就开着、已经花了 50 的会话：之前的不算
+	write("old", 50, 2*time.Hour, now)
+
+	h, f := startHost(t, plugins.FS, "")
+	h.DataDir = t.TempDir()
+	h.HandleMessage(map[string]any{"t": "hello", "have": []any{}})
+	costIs := func(want string) {
+		t.Helper()
+		f.wait(t, func(m map[string]any) bool {
+			raw, _ := json.Marshal(m["v"])
+			return m["t"] == "store" && m["name"] == "agent-cat:cost" && strings.Contains(string(raw), want)
+		})
+	}
+	costIs(`"today":0`)
+	write("old", 52.5, 2*time.Hour, now.Add(time.Second)) // 涨了 2.5
+	costIs(`"today":2.5`)
+	write("new", 1.25, time.Second, now.Add(2*time.Second)) // 记账之后开的会话：全算
+	costIs(`"today":3.75`)
+	write("old", 0.5, time.Second, now.Add(3*time.Second)) // 会话重新打开，钱数从 0 重算
+	costIs(`"today":4.25`)
+
+	// 新版状态栏脚本按会话各存一份：几个会话同时刷新也都记得到（这时不再看 claude-status.json）
+	sessions := filepath.Join(dir, "claude-sessions")
+	_ = os.MkdirAll(sessions, 0o755)
+	writeSession := func(session string, usd float64, at time.Time) {
+		f := filepath.Join(sessions, session+".json")
+		raw := fmt.Sprintf(`{"session_id":%q,"cost":{"total_cost_usd":%v,"total_duration_ms":1000}}`, session, usd)
+		if err := os.WriteFile(f, []byte(raw), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Chtimes(f, at, at)
+	}
+	writeSession("old", 0.75, now.Add(4*time.Second)) // +0.25
+	writeSession("x", 2, now.Add(4*time.Second))      // 新会话 +2
+	writeSession("y", 3, now.Add(4*time.Second))      // 同时刷新的另一个新会话 +3
+	costIs(`"today":9.5`)
+	if e := h.Plugins()[0].Error; e != "" {
+		t.Fatalf("猫插件出错：%s", e)
+	}
+
+	// 手环上：猫页小鱼干旁边、今日页都显示钱数；点钱数柱状图换成钱
+	b := builtinBand(t, "agent-cat")
+	days := []map[string]any{}
+	for i, v := range []float64{0, 3, 12.5, 0, 1, 0, 4.25} {
+		days = append(days, map[string]any{"date": fmt.Sprintf("10-%02d", 17+i), "weekday": "一二三四五六日"[i*3 : i*3+3], "usd": v})
+	}
+	b.setStore("agent-cat:cost", map[string]any{"today": 4.25, "days": days})
+	root := b.waitTree(func(m map[string]any) bool { return hasText(m, "$4.3") && hasText(m, "$4.25|Claude 花的钱") })
+	b.call("dispatch", root["i"], "change", 1)
+	tree := b.waitTree(func(m map[string]any) bool { return m["ix"] == 1.0 })
+	usd := find(tree, func(n map[string]any) bool { return n["t"] != "w" && n["e"] != nil && hasText(n, "Claude 花的钱") })
+	if usd == nil {
+		t.Fatal("找不到钱数那一块")
+	}
+	b.call("dispatch", usd["i"], "click")
+	b.waitTree(func(m map[string]any) bool { return hasText(m, "$13") && hasText(m, "$3.0") })
+}
+

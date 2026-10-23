@@ -45,7 +45,7 @@ App 没有经过 Apple 公证（要付费的开发者账号），第一次打开
 - **App 窗口**：左边是手环预览，和手环上跑的是同一份插件、同一份数据，可以直接点、拖动翻页（右键当长按）；「在手环上显示」把手环切到这个插件，「亮屏」把手环点亮。右边是设置：当前插件的设置、菜单栏的猫、插件列表。
 - **菜单栏**：关掉窗口后 App 留在菜单栏继续工作，从菜单栏「退出」才会真正退出。菜单栏的猫是 App 自带的，只是个图标，和手环上的猫分开选。
 - **提醒**：在 Agent 猫的设置里。agent 跑完、卡住（可选开始跑）时发通知（手环震动）或者只亮屏（把手环点亮、切到猫，不震动）；还可以设「卡住几分钟算太久」（猫着急，再提醒一次）和「有 agent 等你回答时保持亮屏」。
-- **Claude Code 额度**：Codex 的额度直接从它的会话日志读，不用设置。Claude Code 只把额度告诉状态栏命令，要在 App 里打开「显示 Claude Code 额度」：App 会把 Claude Code 的状态栏换成一个小脚本，先存一份数据再交给你原来的状态栏命令，状态栏显示不变；关掉会原样还原，改之前会备份 `~/.claude/settings.json`。只有 Pro / Max 订阅才有额度。
+- **Claude Code 额度**：Codex 的额度直接从它的会话日志读，不用设置。Claude Code 只把额度告诉状态栏命令，要在 App 里打开「显示 Claude Code 额度」：App 会把 Claude Code 的状态栏换成一个小脚本，先存一份数据（按会话各存一份，Agent 猫用来算每天花了多少钱）再交给你原来的状态栏命令，状态栏显示不变；关掉会原样还原，改之前会备份 `~/.claude/settings.json`。只有 Pro / Max 订阅才有额度。
 - **数据放在哪**：`~/Library/Application Support/miband-pet/`。`config.json` 和 `session.json` 是配置和小米账号登录态（权限 600），`plugin-data/` 是插件在 Mac 上存的数据（比如 Agent 猫记的每天完成了几个任务），`plugins/` 是你自己的插件。
 
 > 这个项目以前叫 miband pet。为了不影响已经在用的人，数据目录（`miband-pet`）、App 标识（`dev.bysir.miband-pet`）、手环上应用的包名（`dev.bysir.mibandpet`）都沿用原来的。
