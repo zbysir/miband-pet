@@ -6,7 +6,9 @@
 import { View, Text, Image, Sprite, Row, Spacer, Pager, useStore, useState, useEffect, useRef, useInterval, useScreen, useConfig, asset, vibrate } from 'miband'
 import { Today, fmtReset, fmtUsdShort } from './today'
 
-const PRIORITY = { blocked: 0, working: 1, done: 2, idle: 3, unknown: 4 }
+// 和 herdr 的 agent 面板「按优先级」排序一样（ui.agent_panel_sort = "priority"）：
+// 卡住的 > 跑完还没看的（done）> 在跑的 > 看过的空闲（idle）> 认不出的；同一档里最近变过状态的在前
+const PRIORITY = { blocked: 0, done: 1, working: 2, idle: 3, unknown: 4 }
 const COLOR = { blocked: '#ff9f1c', working: '#2ea0ff', done: '#3ddc84', idle: '#5c6068', unknown: '#5c6068' }
 const HEAD_COLOR = { alert: '#ff9f1c', impatient: '#ff5c5c', work: '#2ea0ff', celebrate: '#3ddc84', sleep: '#c9ced8' }
 // 每种动作的帧数和一轮的时长（帧由 tools/gen_pet.py 生成）；着急时举牌摇得更快
@@ -173,8 +175,10 @@ function CatPage({ openToday }) {
   const [action, duration] = ACTION[mood]
 
   // 气泡里的 agent：从需要关注的（不是空闲的）里面挑，按优先级排；记住当前是谁，数据更新时不跳回第一个。
-  // 状态相同的再按项目、id 排：Mac 推来的列表顺序不固定，不排的话「1/2」和点了换谁都会乱跳
-  const sorted = agents.slice().sort((x, y) => (PRIORITY[x.status] ?? 4) - (PRIORITY[y.status] ?? 4) || byProjectThenId(x, y))
+  // 同一档里最近变过状态的在前；再一样就按项目、id 排，顺序固定，「1/2」和点了换谁不会乱跳
+  const sorted = agents
+    .slice()
+    .sort((x, y) => (PRIORITY[x.status] ?? 4) - (PRIORITY[y.status] ?? 4) || (y.seq || 0) - (x.seq || 0) || byProjectThenId(x, y))
   const top = sorted.filter((a) => a.status !== 'idle' && a.status !== 'unknown')
   const pool = top.length > 0 ? top : sorted
   const index = Math.max(0, pool.findIndex((a) => a.id === focusId))

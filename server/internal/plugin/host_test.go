@@ -786,7 +786,7 @@ func TestAgentCatHerdr(t *testing.T) {
 			return m["t"] == "store" && m["name"] == name && strings.Contains(string(raw), want)
 		}
 	}
-	f.wait(t, storeIs("agent-cat:agents", `{"agent":"claude","id":"p0","project":"api","status":"working","title":"任务0"}`))
+	f.wait(t, storeIs("agent-cat:agents", `{"agent":"claude","id":"p0","project":"api","seq":0,"status":"working","title":"任务0"}`))
 	f.wait(t, storeIs("agent-cat:stats", `"today":{"done":4}`))
 
 	// 跑完一个：今天的数 +1，发通知
@@ -978,4 +978,24 @@ export default function App() {
 		t.Fatalf("B 的间距不对：%s", s)
 	}
 	wantRuns(map[string]int{"App": 1, "A": 4, "B": 3, "C": 2})
+}
+
+// 气泡里的顺序和 herdr「按优先级」一样：卡住 > 跑完没看 > 在跑；同一档里最近变过状态的在前
+func TestAgentCatPriority(t *testing.T) {
+	b := builtinBand(t, "agent-cat")
+	agent := func(id, status string, seq int) map[string]any {
+		return map[string]any{"id": id, "agent": "claude", "project": "proj", "title": "任务" + id, "status": status, "seq": seq}
+	}
+	b.setStore("agent-cat:agents", []map[string]any{
+		agent("w5", "working", 5), agent("d3", "done", 3), agent("w9", "working", 9), agent("b1", "blocked", 1), agent("i7", "idle", 7),
+	})
+	tree := b.waitTree(func(m map[string]any) bool { return hasText(m, "1/4") && hasText(m, "任务b1") })
+	for i, want := range []string{"任务d3", "任务w9", "任务w5"} {
+		bubble := find(tree, func(n map[string]any) bool {
+			return n["e"] != nil && strings.Contains(n["s"].(string), "background-color:#16191f")
+		})
+		b.call("dispatch", bubble["i"], "click")
+		pos := fmt.Sprintf("%d/4", i+2)
+		tree = b.waitTree(func(m map[string]any) bool { return hasText(m, pos) && hasText(m, want) })
+	}
 }

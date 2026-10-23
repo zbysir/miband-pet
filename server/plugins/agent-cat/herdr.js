@@ -191,7 +191,8 @@ function poll() {
     return setTimeout(poll, NO_HERDR_POLL_MS)
   }
   const agents = raw
-    .map((a) => ({ id: a.pane_id, agent: a.agent, project: project(a.cwd), title: a.name || a.terminal_title_stripped || '', status: a.agent_status }))
+    // seq：herdr 里状态变化的序号，越大越近（排序用：同一档里最近变过状态的在前）
+    .map((a) => ({ id: a.pane_id, agent: a.agent, project: project(a.cwd), title: a.name || a.terminal_title_stripped || '', status: a.agent_status, seq: a.state_change_seq || 0 }))
     .sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)) // 顺序固定，内容没变就不会重推
   track(agents, prev === null, now)
   if (prev) {
