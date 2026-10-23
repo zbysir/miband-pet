@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -892,3 +893,89 @@ func TestAgentCatCost(t *testing.T) {
 	b.waitTree(func(m map[string]any) bool { return hasText(m, "$13") && hasText(m, "$3.0") })
 }
 
+// 只重算变了的组件：点 A 只重跑 A；别的组件复用上次的节点，它们的点击、滑动照常；数据变了只重跑读它的组件
+func TestPartialRender(t *testing.T) {
+	b := sourceBand(t, fstest.MapFS{
+		"manifest.json": {Data: []byte(`{"name": "spy"}`)},
+		"index.jsx": {Data: []byte(`import { Col, Row, Text, useState, useStore, useSwipe, call } from 'miband'
+function A() {
+  call('run', 'A')
+  const [n, setN] = useState(0)
+  return <Text onClick={() => setN(n + 1)}>{'A' + n}</Text>
+}
+function B() {
+  call('run', 'B')
+  const [n, setN] = useState(0)
+  useSwipe((d) => { if (d === 'up') setN(n + 10) })
+  return <Text onClick={() => setN(n + 1)}>{'B' + n}</Text>
+}
+function C() {
+  call('run', 'C')
+  return <Text>{'C' + useStore('x')}</Text>
+}
+export default function App() {
+  call('run', 'App')
+  return <Col><Row gap={5}><A /><B /></Row><C /></Col>
+}`)},
+	})
+	runs := func() map[string]int {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		out := map[string]int{}
+		for _, c := range b.calls {
+			if name, ok := strings.CutPrefix(c, "run "); ok {
+				out[strings.Trim(name, `["]`)]++
+			}
+		}
+		return out
+	}
+	wantRuns := func(want map[string]int) {
+		t.Helper()
+		time.Sleep(50 * time.Millisecond)
+		if got := runs(); !maps.Equal(got, want) {
+			t.Fatalf("组件重跑次数不对：%v，想要 %v", got, want)
+		}
+	}
+	click := func(text string) {
+		t.Helper()
+		tree := b.waitTree(func(m map[string]any) bool { return hasText(m, text) })
+		n := find(tree, func(n map[string]any) bool { return n["x"] == text })
+		b.call("dispatch", n["i"], "click")
+	}
+	style := func(tree map[string]any, text string) string {
+		return find(tree, func(n map[string]any) bool { return n["x"] == text })["s"].(string)
+	}
+
+	b.waitTree(func(m map[string]any) bool { return hasText(m, "A0|B0|Cundefined") })
+	wantRuns(map[string]int{"App": 1, "A": 1, "B": 1, "C": 1})
+
+	click("A0") // 只重跑 A
+	tree := b.waitTree(func(m map[string]any) bool { return hasText(m, "A1|B0") })
+	wantRuns(map[string]int{"App": 1, "A": 2, "B": 1, "C": 1})
+	if s := style(tree, "B0"); !strings.Contains(s, "margin-left:5px") {
+		t.Fatalf("复用的 B 丢了 Row 的间距：%s", s)
+	}
+
+	click("B0") // B 复用过一次，点击照常
+	b.waitTree(func(m map[string]any) bool { return hasText(m, "A1|B1") })
+	wantRuns(map[string]int{"App": 1, "A": 2, "B": 2, "C": 1})
+
+	click("A1") // A 重跑后 B 又被复用：滑动处理还在
+	b.waitTree(func(m map[string]any) bool { return hasText(m, "A2|B1") })
+	b.call("swipe", "up")
+	b.waitTree(func(m map[string]any) bool { return hasText(m, "A2|B11") })
+	wantRuns(map[string]int{"App": 1, "A": 3, "B": 3, "C": 1})
+
+	b.setStore("spy:x", 5) // 数据变了：只重跑读它的 C
+	b.waitTree(func(m map[string]any) bool { return hasText(m, "A2|B11|C5") })
+	wantRuns(map[string]int{"App": 1, "A": 3, "B": 3, "C": 2})
+	b.setStore("other", 1) // 没人读的数据：谁都不重跑
+	wantRuns(map[string]int{"App": 1, "A": 3, "B": 3, "C": 2})
+
+	click("A2")
+	tree = b.waitTree(func(m map[string]any) bool { return hasText(m, "A3|B11|C5") })
+	if s := style(tree, "B11"); !strings.Contains(s, "margin-left:5px") {
+		t.Fatalf("B 的间距不对：%s", s)
+	}
+	wantRuns(map[string]int{"App": 1, "A": 4, "B": 3, "C": 2})
+}

@@ -133,22 +133,39 @@ function messageTree(title, msg, color) {
   }
 }
 
-// Pager（swiper）只能是根节点（模板里只给根节点留了 swiper）
-function nestedPager(n) {
-  return (n.c || []).some((c) => c.t === 'w' || nestedPager(c))
-}
-
-function depth(n) {
-  let d = 0
-  ;(n.c || []).forEach((c) => {
-    if (c.t === 'v') d = Math.max(d, depth(c))
-  })
-  return d + 1
+// 一遍走完插件交来的树（手环上每走一遍整棵树都要十几毫秒），收集：
+//   depth   View 嵌套几层（根算第 1 层）
+//   nested  根以外有没有 Pager（模板里只给根节点留了 swiper）
+//   images  用到的图片哈希
+//   sprites 动画节点 {id: 帧签名}
+function scan(tree) {
+  const out = { depth: 0, nested: false, images: [], sprites: {} }
+  const image = (src) => {
+    if (src && src.indexOf(FILES) === 0) out.images.push(src.slice(FILES.length, src.lastIndexOf('.')))
+  }
+  const walk = (n, d) => {
+    if (d > out.depth) out.depth = d
+    image(n.u)
+    if (n.f) {
+      n.f.forEach((f) => image(f.src))
+      if (n.t === 'a') out.sprites[n.i] = n.f.map((f) => f.src).join(',') + '|' + n.d
+    }
+    ;(n.c || []).forEach((c) => {
+      if (c.t === 'w') out.nested = true
+      walk(c, c.t === 'v' ? d + 1 : d)
+    })
+  }
+  walk(tree, 1)
+  return out
 }
 
 // 每个节点都带上全部字段：页面上的树是响应式的，事后才加的字段不会触发更新（patch 只改已有字段）
 const EMPTY = { s: '', x: '', u: '', f: [], d: '', e: 0, vt: true, ix: 0, c: [] }
+// 页面上每个节点（按 id）上次是照着插件交来的哪个对象画的。插件运行时复用没变的组件时交来的是同一个对象，
+// 一样就整棵子树跳过不比
+let SRC = {}
 function normalize(n) {
+  SRC[n.i] = n
   const out = Object.assign({}, EMPTY, n)
   out.c = (n.c || []).map(normalize)
   return out
@@ -160,42 +177,30 @@ function sameFrames(a, b) {
   return true
 }
 
-// 把新树的变化写进页面上正在画的树：只改变了的字段，框架只更新这些绑定，元素（包括正在播的动画）不重建。
-// 子节点的 id 和顺序都没变就逐个比，否则整段子节点换掉
+// 把插件新交的树（字段不全）的变化写进页面上正在画的树（字段齐全）：只改变了的字段，框架只更新这些绑定，
+// 元素（包括正在播的动画）不重建。缺的字段当默认值比，不用先把整棵新树补全一遍。
+// 子节点的 id 和顺序都没变就逐个比，否则整段子节点换掉（这时才补全）
+const FIELDS = ['s', 'x', 'u', 'd', 'e', 'vt', 'ix']
 function patch(old, neu) {
-  ;['s', 'x', 'u', 'd', 'e', 'vt', 'ix'].forEach((k) => {
-    if (old[k] !== neu[k]) old[k] = neu[k]
+  if (SRC[old.i] === neu) return
+  SRC[old.i] = neu
+  FIELDS.forEach((k) => {
+    const v = neu[k] === undefined ? EMPTY[k] : neu[k]
+    if (old[k] !== v) old[k] = v
   })
-  if (!sameFrames(old.f, neu.f)) old.f = neu.f
+  const f = neu.f || EMPTY.f
+  if (!sameFrames(old.f, f)) old.f = f
   const a = old.c
-  const b = neu.c
+  const b = neu.c || []
   let same = a.length === b.length
   for (let i = 0; same && i < a.length; i++) same = a[i].i === b[i].i && a[i].t === b[i].t
   if (same) {
     for (let i = 0; i < a.length; i++) patch(a[i], b[i])
   } else {
-    old.c = b
+    old.c = b.map(normalize)
   }
 }
 
-// 树里用到的图片哈希
-function imagesOf(node, out) {
-  const add = (src) => {
-    if (src && src.indexOf(FILES) === 0) out.push(src.slice(FILES.length, src.lastIndexOf('.')))
-  }
-  add(node.u)
-  ;(node.f || []).forEach((f) => add(f.src))
-  ;(node.c || []).forEach((c) => imagesOf(c, out))
-  return out
-}
-
-// 树里所有动画节点：{id: 帧签名}
-function spritesOf(node, out) {
-  if (!node) return out
-  if (node.t === 'a') out[node.i] = (node.f || []).map((f) => f.src).join(',') + '|' + node.d
-  if (node.c) node.c.forEach((c) => spritesOf(c, out))
-  return out
-}
 
 export default {
   private: {
@@ -412,10 +417,10 @@ export default {
       if (this.insts[p.name] === inst && this.isActive(p.name)) this.showTree(messageTree(p.title + ' 出错了', msg, '#ff9f1c'))
     }
     const rt = createRuntime({
-      render: (tree) => {
+      render: (tree, timing) => {
         inst.tree = tree
         inst.err = null
-        if (this.insts[p.name] === inst && this.isActive(p.name)) this.showTree(tree)
+        if (this.insts[p.name] === inst && this.isActive(p.name)) this.showTree(tree, timing)
       },
       error: onError,
       log: (level, msg) => this.log(p.name, level, msg),
@@ -460,11 +465,18 @@ export default {
   },
 
   // 画一棵树：图片都在手环上了才画，缺的先向 Mac 要
-  showTree(tree) {
+  // timing：插件运行时这次渲染各步的耗时（见 runtime.js 的 render），点击后记日志用
+  showTree(tree, timing) {
     if (!tree) return
-    if (depth(tree) > MAX_DEPTH) tree = messageTree('界面嵌套太深', '最多 ' + MAX_DEPTH + ' 层 View', '#ff9f1c')
-    else if (nestedPager(tree)) tree = messageTree('Pager 只能放在最外层', '插件返回的根组件是 Pager 时才能翻页', '#ff9f1c')
-    const missing = imagesOf(tree, []).filter((h) => !this.have[h])
+    const tc = Date.now()
+    let info = scan(tree)
+    if (info.depth > MAX_DEPTH || info.nested) {
+      tree = info.nested
+        ? messageTree('Pager 只能放在最外层', '插件返回的根组件是 Pager 时才能翻页', '#ff9f1c')
+        : messageTree('界面嵌套太深', '最多 ' + MAX_DEPTH + ' 层 View', '#ff9f1c')
+      info = scan(tree)
+    }
+    const missing = info.images.filter((h) => !this.have[h])
     if (missing.length > 0) {
       this.waiting = tree
       this.need(missing)
@@ -472,19 +484,22 @@ export default {
     }
     this.waiting = null
     const t0 = Date.now()
-    const next = normalize(tree)
-    if (this.root && this.root.i === next.i && this.root.t === next.t) patch(this.root, next)
+    if (this.root && this.root.i === tree.i && this.root.t === tree.t) patch(this.root, tree)
     else {
-      this.root = next
+      this.root = normalize(tree)
       this.pagerAt = {} // 新建的 swiper 从第 0 页开始
     }
-    this.startSprites()
-    this.syncPager(next)
-    // 点了之后多久把新界面交给框架；慢了发回 Mac 记一笔
+    this.startSprites(info.sprites)
+    this.syncPager(tree)
+    // 点了之后多久把新界面交给框架，分步发回 Mac 记一笔（找慢在哪）
     if (this.tapAt) {
-      const ms = Date.now() - this.tapAt
+      const end = Date.now()
+      const tm = timing || {}
+      const step = (name, ms) => (ms === undefined ? '' : ' ' + name + ' ' + ms)
+      this.log('', 'info', '点击到界面更新 ' + (end - this.tapAt) + 'ms：' +
+        step('事件', tm.at === undefined ? undefined : tm.at - this.tapAt) + step('插件代码', tm.comp) + step('转节点', tm.build) +
+        step('样式', tm.style) + step('检查', t0 - tc) + step('更新', end - t0))
       this.tapAt = 0
-      if (ms > 200) this.log('', 'info', '点击到界面更新 ' + ms + 'ms（其中更新 ' + (Date.now() - t0) + 'ms）')
     }
   },
 
@@ -569,8 +584,9 @@ export default {
   },
 
   // image-animator 不会自己播：新出现的、换了帧的，等元素建好后 start
-  startSprites() {
-    const now = spritesOf(this.root, {})
+  // sprites：树里的动画节点 {id: 帧签名}（scan 收集的）
+  startSprites(sprites) {
+    const now = sprites
     const todo = Object.keys(now).filter((id) => this.started[id] !== now[id])
     this.started = now
     todo.forEach((id) => this.startSprite(id, now[id], 0))

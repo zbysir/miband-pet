@@ -3,7 +3,8 @@
 // 每个插件一个运行时实例：createRuntime(host) 。Mac 上的测试也用这个文件（server/internal/plugin）。
 //
 // host（由页面提供）：
-//   render(tree)        交一棵新树（对象）
+//   render(tree, timing) 交一棵新树（对象）；timing 是这次渲染各步的耗时（毫秒）：
+//                       { at: 开始渲染的时间, comp: 插件组件函数, build: 转成节点, style: 拼样式字符串 }
 //   error(msg)          渲染或事件处理出错
 //   log(level, msg)
 //   asset(path)         插件目录里的图片 → 手环上的路径
@@ -32,8 +33,15 @@ module.exports = function createRuntime(host) {
 
   const UNITLESS = { flex: 1, flexGrow: 1, flexShrink: 1, opacity: 1, lines: 1, fontWeight: 1, zIndex: 1 }
 
+  // 属性名就那么几十个，转过的记下来（手环上正则替换很慢，每次渲染每个节点都要转）
+  const kebabCache = {}
   function kebab(k) {
-    return k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())
+    let v = kebabCache[k]
+    if (v === undefined) {
+      v = k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())
+      kebabCache[k] = v
+    }
+    return v
   }
 
   function cssValue(k, v) {
@@ -95,15 +103,56 @@ module.exports = function createRuntime(host) {
   }
 
   // ---------- 组件实例和 hooks ----------
+  //
+  // 只重算变了的组件（和 React 一样）：手环上的 JS 很慢，整个插件从根重算一遍要两三百毫秒。
+  // 每个组件实例记着上次的 props、上次返回的元素（out）、展开成的节点（nodes），以及展开时登记的东西（rec：
+  // 节点 id、点击处理、滑动处理、用到的子组件）。
+  //   - setState 只标记自己 dirty，祖先标记 below（下面有变了的）；Mac 推来的数据变了，标记读过这项数据的组件
+  //   - 重算时：自己没变、下面也没变、props 一样 → 直接用上次的节点，把 rec 重新登记一遍
+  //            自己没变、下面有变的 → 不调组件函数，把上次返回的元素重新展开（没变的子组件 props 还是同一个对象，接着复用）
+  //            其它 → 调组件函数
 
-  const instances = new Map() // 路径 → {type, hooks}
-  let current = null
+  const instances = new Map() // 路径 → 组件实例
+  let current = null // 正在跑函数的组件（hooks 用）
+  let owner = null // 正在展开的组件（新建的子组件记它当 parent）
   let hookIndex = 0
   let seen = null
   let effects = []
+  let compMs = 0 // 这次渲染里插件组件函数一共跑了多久
   let handlers = {}
   let swipeHandlers = []
+  let rec = null // 正在展开的组件的登记
   const stores = {}
+
+  function newRec() {
+    return { ids: [], handlers: [], swipes: [], seen: [], kids: [] }
+  }
+
+  // 复用上次的节点时，把它展开时登记的东西再登记一遍
+  function replay(r) {
+    for (let i = 0; i < r.ids.length; i += 2) usedIds.set(r.ids[i], r.ids[i + 1])
+    for (let i = 0; i < r.handlers.length; i += 2) handlers[r.handlers[i]] = r.handlers[i + 1]
+    r.swipes.forEach((fn) => swipeHandlers.push(fn))
+    r.seen.forEach((k) => seen.add(k))
+    r.kids.forEach(replay)
+  }
+
+  function markDirty(inst) {
+    inst.dirty = true
+    for (let p = inst.parent; p && !p.below; p = p.parent) p.below = true
+  }
+
+  // props 一样：每一项是同一个值；children 都是空的也算一样（每次渲染都是新的空数组）
+  function sameProps(a, b) {
+    const ka = Object.keys(a)
+    if (ka.length !== Object.keys(b).length) return false
+    for (const k of ka) {
+      if (Object.is(a[k], b[k])) continue
+      if (k === 'children' && Array.isArray(a[k]) && Array.isArray(b[k]) && a[k].length === 0 && b[k].length === 0) continue
+      return false
+    }
+    return true
+  }
 
   function hook(init) {
     if (!current) throw new Error('hooks 只能在组件函数里调用')
@@ -121,10 +170,12 @@ module.exports = function createRuntime(host) {
   function useState(initial) {
     const s = hook(() => ({ v: typeof initial === 'function' ? initial() : initial }))
     if (!s.set) {
+      const inst = current
       s.set = (next) => {
         const v = typeof next === 'function' ? next(s.v) : next
         if (Object.is(v, s.v)) return
         s.v = v
+        markDirty(inst)
         scheduleRender()
       }
     }
@@ -173,16 +224,18 @@ module.exports = function createRuntime(host) {
   // 插件之间不共用数据
   const BASE_STORES = ['screen', 'band']
   function useStore(name) {
-    if (BASE_STORES.indexOf(name) >= 0 || !host.scope) return stores[name]
-    return stores[host.scope + name]
+    const key = BASE_STORES.indexOf(name) >= 0 || !host.scope ? name : host.scope + name
+    if (current) current.reads.add(key) // 这项数据变了要重算这个组件
+    return stores[key]
   }
 
+  // 滑动处理记在组件上：组件没重跑、复用上次的节点时，上次登记的照样生效
   function useSwipe(fn) {
-    swipeHandlers.push(fn)
+    if (current) current.swipes.push(fn)
   }
 
   function useScreen() {
-    return stores.screen || { width: 212, height: 303 }
+    return useStore('screen') || { width: 212, height: 303 }
   }
 
   // 插件的配置：manifest.json 里 settings 声明的，用户在 App 里改，Mac 推过来（没改过的是默认值）
@@ -258,6 +311,7 @@ module.exports = function createRuntime(host) {
       ids.set(path, id)
     }
     usedIds.set(path, id)
+    rec.ids.push(path, id)
     return id
   }
 
@@ -292,26 +346,23 @@ module.exports = function createRuntime(host) {
     if (el.type === Fragment) return expand(el.children, path)
     if (typeof el.type === 'function') {
       const key = path + ':' + (el.type.name || 'C')
+      const props = Object.assign({}, el.props, { children: el.children.length === 1 ? el.children[0] : el.children })
       let inst = instances.get(key)
+      if (inst && inst.type === el.type && inst.nodes && !inst.dirty && sameProps(inst.props, props)) {
+        if (!inst.below) {
+          replay(inst.rec)
+          rec.kids.push(inst.rec)
+          return inst.nodes
+        }
+        return expandInst(inst, key, false)
+      }
       if (!inst || inst.type !== el.type) {
         if (inst) unmount(inst)
-        inst = { type: el.type, hooks: [] }
+        inst = { type: el.type, hooks: [], parent: owner, reads: new Set(), swipes: [], dirty: false, below: false }
         instances.set(key, inst)
       }
-      seen.add(key)
-      const props = Object.assign({}, el.props, { children: el.children.length === 1 ? el.children[0] : el.children })
-      const prev = current
-      const prevIndex = hookIndex
-      current = inst
-      hookIndex = 0
-      let out
-      try {
-        out = el.type(props)
-      } finally {
-        current = prev
-        hookIndex = prevIndex
-      }
-      return expand(out, key)
+      inst.props = props
+      return expandInst(inst, key, true)
     }
     const t = TAGS[el.type]
     if (!t) throw new Error('不认识的组件：' + el.type)
@@ -337,7 +388,9 @@ module.exports = function createRuntime(host) {
     if (p.onChange && t === 'w') e |= 4
     if (e) {
       node.e = e
-      handlers[node.i] = { click: p.onClick, longpress: p.onLongPress, change: p.onChange }
+      const hd = { click: p.onClick, longpress: p.onLongPress, change: p.onChange }
+      handlers[node.i] = hd
+      rec.handlers.push(node.i, hd)
     }
     if (t === 'v' || t === 'w') {
       node.c = expand(el.children, path)
@@ -351,7 +404,50 @@ module.exports = function createRuntime(host) {
     return [node]
   }
 
+  // 展开一个组件实例：run 时调组件函数，否则用它上次返回的元素
+  function expandInst(inst, key, run) {
+    const parentRec = rec
+    const prevOwner = owner
+    rec = newRec()
+    rec.seen.push(key)
+    seen.add(key)
+    if (run) {
+      const prev = current
+      const prevIndex = hookIndex
+      current = inst
+      hookIndex = 0
+      inst.reads = new Set()
+      inst.swipes = []
+      const t0 = Date.now()
+      try {
+        inst.out = inst.type(inst.props)
+      } finally {
+        compMs += Date.now() - t0
+        current = prev
+        hookIndex = prevIndex
+      }
+    }
+    inst.swipes.forEach((fn) => swipeHandlers.push(fn))
+    rec.swipes = inst.swipes
+    owner = inst
+    let nodes
+    try {
+      nodes = expand(inst.out, key)
+    } finally {
+      owner = prevOwner
+    }
+    inst.rec = rec
+    inst.nodes = nodes
+    inst.dirty = false
+    inst.below = false
+    parentRec.kids.push(rec)
+    rec = parentRec
+    return nodes
+  }
+
+  // 节点 → 交给页面的样子。复用的节点上次算过，直接用（页面也靠同一个对象认出没变的部分）
   function finish(node) {
+    if (node.fin) return node.fin
     const out = { t: node.t, i: node.i, s: styleString(node.sm) }
     if (node.x !== undefined) out.x = node.x
     if (node.u !== undefined) out.u = node.u
@@ -361,6 +457,7 @@ module.exports = function createRuntime(host) {
     if (node.ix !== undefined) out.ix = node.ix
     if (node.e) out.e = node.e
     if (node.c) out.c = node.c.map(finish)
+    node.fin = out
     return out
   }
 
@@ -379,10 +476,16 @@ module.exports = function createRuntime(host) {
     handlers = {}
     swipeHandlers = []
     usedIds = new Map()
+    compMs = 0
+    rec = newRec()
+    owner = null
+    const t0 = Date.now()
     let nodes
     try {
       nodes = expand(h(root, {}), 'r')
     } catch (e) {
+      // 出错的那次展开到一半，组件记的节点不完整：下次都重跑
+      instances.forEach((inst) => (inst.nodes = null))
       host.error('渲染出错：' + errText(e))
       return
     }
@@ -393,10 +496,11 @@ module.exports = function createRuntime(host) {
         instances.delete(k)
       }
     })
+    const t1 = Date.now()
     let tree = null
     if (nodes.length === 1 && (nodes[0].t === 'v' || nodes[0].t === 'w')) tree = finish(nodes[0])
     else if (nodes.length > 0) tree = finish({ t: 'v', i: 'root', sm: { 'flex-direction': 'column' }, c: nodes })
-    host.render(tree)
+    host.render(tree, { at: t0, comp: compMs, build: t1 - t0 - compMs, style: Date.now() - t1 })
     const run = effects
     effects = []
     run.forEach((f) => {
@@ -462,6 +566,9 @@ module.exports = function createRuntime(host) {
     },
     setStore(name, value) {
       stores[name] = value
+      instances.forEach((inst) => {
+        if (inst.reads.has(name)) markDirty(inst)
+      })
       scheduleRender()
     },
     // 立刻重新渲染（页面切回这个插件时用）
