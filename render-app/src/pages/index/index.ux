@@ -491,14 +491,16 @@ export default {
     }
     this.startSprites(info.sprites)
     this.syncPager(tree)
-    // 点了之后多久把新界面交给框架，分步发回 Mac 记一笔（找慢在哪）
+    // 点了之后多久把新界面交给框架；超过 200ms 分步发回 Mac 记一笔（找慢在哪）
     if (this.tapAt) {
       const end = Date.now()
       const tm = timing || {}
       const step = (name, ms) => (ms === undefined ? '' : ' ' + name + ' ' + ms)
-      this.log('', 'info', '点击到界面更新 ' + (end - this.tapAt) + 'ms：' +
-        step('事件', tm.at === undefined ? undefined : tm.at - this.tapAt) + step('插件代码', tm.comp) + step('转节点', tm.build) +
-        step('样式', tm.style) + step('检查', t0 - tc) + step('更新', end - t0))
+      if (end - this.tapAt > 200) {
+        this.log('', 'info', '点击到界面更新 ' + (end - this.tapAt) + 'ms：' +
+          step('事件', tm.at === undefined ? undefined : tm.at - this.tapAt) + step('插件代码', tm.comp) + step('转节点', tm.build) +
+          step('样式', tm.style) + step('检查', t0 - tc) + step('更新', end - t0))
+      }
       this.tapAt = 0
     }
   },
