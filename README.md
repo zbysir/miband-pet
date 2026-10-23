@@ -22,11 +22,14 @@
 
 ## 开始使用
 
-目前要自己构建 App（需要 Go、Node.js 和 [Wails](https://wails.io)）：
+到 [Releases](https://github.com/zbysir/wristkit/releases) 下载最新的 `wristkit-*-mac.zip`，解压后把 `wristkit.app` 拖进「应用程序」。Intel 和 Apple 芯片的 Mac 都能用。
 
-```sh
-make app      # 生成 server/app/build/bin/wristkit.app
-```
+App 没有经过 Apple 公证（要付费的开发者账号），第一次打开时系统会拦下，提示无法验证开发者：
+
+1. 先双击打开一次，在弹窗里点「完成」。
+2. 打开「系统设置 → 隐私与安全性」，拉到「安全性」那里，会看到 wristkit 被阻止的提示，点旁边的「仍要打开」，再输入密码确认。
+
+之后就能正常打开。每个版本都用同一张证书签名，更新后不用重新允许蓝牙。也可以自己构建，见下面「开发」。
 
 第一次打开会进入**连接向导**：
 
@@ -93,7 +96,7 @@ export default function Counter() {
 ## 开发
 
 ```sh
-make app        # 构建 macOS App（含手环上的应用）
+make app        # 构建 macOS App（含手环上的应用）：server/app/build/bin/wristkit.app
 make cli        # 构建命令行版 server/miband
 make quickapps  # 只打包手环上的应用 render-app/dist/*.rpk
 make test       # 跑 Go 测试（插件测试会在 goja 里跑手环上的同一份运行时）
@@ -119,7 +122,7 @@ make test       # 跑 Go 测试（插件测试会在 goja 里跑手环上的同�
 
 ### 签名
 
-macOS 按「App 标识 + 签名证书」记蓝牙授权。不签名的话每次构建签名都变，每次都会重新弹蓝牙授权。`make app` 会用钥匙串里名为 `miband pet local signing` 的证书签名（名字沿用改名之前的），建一次即可：
+macOS 按「App 标识 + 签名证书」记蓝牙授权。不签名的话每次构建签名都变，每次都会重新弹蓝牙授权。`make app` 会用钥匙串里名为 `miband pet local signing` 的证书签名（名字沿用改名之前的），建一次即可（自己构建的和 Releases 里下载的证书不同，两者之间换着用要重新允许一次蓝牙）：
 
 ```sh
 openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 3650 -nodes \
@@ -129,6 +132,12 @@ openssl pkcs12 -export -legacy -inkey key.pem -in cert.pem -out cert.p12 -passou
 security import cert.p12 -k ~/Library/Keychains/login.keychain-db -P tmp -T /usr/bin/codesign
 rm key.pem cert.pem cert.p12
 ```
+
+### 发版
+
+推一个 `v` 开头的 tag（如 `git tag v0.1.0 && git push origin v0.1.0`），GitHub Actions（`.github/workflows/release.yml`）会构建 Intel / Apple 芯片通用的 App，用固定的自签证书「wristkit release signing」签名，打成 zip 挂到 Release 上。本机也能跑同样的构建：`make release VERSION=0.1.0 SIGN_IDENTITY="wristkit release signing"`。
+
+证书和私钥在仓库的 Secrets 里（`MACOS_CERT_P12` 是 base64 编码的 .p12，`MACOS_CERT_PASSWORD` 是它的密码）。**一直用这同一张证书**：换了证书，所有用户更新后都要重新允许蓝牙。
 
 ### 命令行
 

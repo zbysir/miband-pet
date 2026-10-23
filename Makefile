@@ -3,10 +3,11 @@
 #   make cli        构建命令行版：server/miband
 #   make quickapps  只打包手环上的渲染器快应用（render-app/dist/*.rpk）
 #   make test       跑 Go 测试
+#   make release VERSION=0.1.0   构建 Intel / Apple 芯片通用的 App，打成 dist/wristkit-0.1.0-mac.zip（CI 发版用）
 
 WAILS ?= $(shell command -v wails 2>/dev/null || echo $(HOME)/go/bin/wails)
 
-.PHONY: app cli quickapps test
+.PHONY: app cli quickapps test release
 
 quickapps:
 	cd render-app && npm install --no-audit --no-fund && npx aiot build
@@ -15,7 +16,14 @@ quickapps:
 # 不签名的话每次构建签名都变，每次都会重新弹蓝牙授权。证书怎么建见 README。
 # 证书名和 App 标识（dev.bysir.miband-pet）都沿用改名之前的：证书是钥匙串里已经建好的那张，
 # 标识改了 macOS 会当成新 App，要重新授权蓝牙
+# 发版（CI）用另一张固定的证书「wristkit release signing」，见 .github/workflows/release.yml。
 SIGN_IDENTITY ?= miband pet local signing
+# 设了就必须签上名，找不到证书直接失败（发版用）
+REQUIRE_SIGN ?=
+# App 的版本号，写进 Info.plist；不设就是 Wails 默认的
+VERSION ?=
+# 目标平台，如 darwin/universal（Intel + Apple 芯片）；不设就是本机的
+PLATFORM ?=
 APP_BUNDLE = server/app/build/bin/wristkit.app
 
 app: quickapps
@@ -23,12 +31,24 @@ app: quickapps
 	cp render-app/src/common/runtime.js server/app/frontend/public/runtime.js
 	rm -f server/app/rpk/*.rpk
 	cp render-app/dist/*.rpk server/app/rpk/
-	cd server/app && $(WAILS) build -clean
+	cd server/app && $(WAILS) build -clean $(if $(PLATFORM),-platform $(PLATFORM))
+	@if [ -n "$(VERSION)" ]; then \
+		/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" -c "Set :CFBundleVersion $(VERSION)" "$(APP_BUNDLE)/Contents/Info.plist"; \
+	fi
 	@if security find-identity -p codesigning | grep -q "$(SIGN_IDENTITY)"; then \
 		codesign --force --deep --identifier dev.bysir.miband-pet -s "$(SIGN_IDENTITY)" "$(APP_BUNDLE)"; \
+	elif [ -n "$(REQUIRE_SIGN)" ]; then \
+		echo "没找到签名证书「$(SIGN_IDENTITY)」"; exit 1; \
 	else \
 		echo "没找到签名证书「$(SIGN_IDENTITY)」，App 未签名：每次构建后都会重新弹蓝牙授权"; \
 	fi
+
+# 用 ditto 打包才能保住签名和扩展属性（zip 命令会弄坏）
+release:
+	@if [ -z "$(VERSION)" ]; then echo "要指定版本号：make release VERSION=0.1.0"; exit 1; fi
+	$(MAKE) app PLATFORM=darwin/universal REQUIRE_SIGN=1 VERSION=$(VERSION)
+	mkdir -p dist
+	ditto -c -k --keepParent "$(APP_BUNDLE)" dist/wristkit-$(VERSION)-mac.zip
 
 cli:
 	cd server && go build -o miband ./cmd/miband

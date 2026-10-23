@@ -1,0 +1,68 @@
+# 发版：推一个 v 开头的 tag（如 v0.1.0），构建 Intel / Apple 芯片通用的 App，签名后挂到 GitHub Release。
+#
+# 签名用一张固定的自签证书「wristkit release signing」（存在仓库的 Secrets 里）：
+# macOS 按「App 标识 + 签名证书」记蓝牙授权，每次都用同一张证书，用户更新后不用重新授权蓝牙。
+# 自签证书没经过 Apple 公证，第一次打开要在「系统设置 → 隐私与安全性」里点「仍要打开」（见 README）。
+#
+# 要的 Secrets：
+#   MACOS_CERT_P12       证书和私钥导出的 .p12，base64 编码
+#   MACOS_CERT_PASSWORD  .p12 的密码
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: 装 Wails
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@$(cd server && go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)
+
+      - name: 导入签名证书
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          pass=$(openssl rand -hex 16)
+          security create-keychain -p "$pass" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$pass" "$keychain"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/cert.p12"
+          # 让 codesign 用私钥时不弹窗
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security find-identity -p codesigning "$keychain"
+
+      - name: 构建
+        run: make release VERSION="${GITHUB_REF_NAME#v}" SIGN_IDENTITY="wristkit release signing" WAILS="$(go env GOPATH)/bin/wails"
+
+      - name: 检查签名
+        run: |
+          codesign --verify --deep --strict server/app/build/bin/wristkit.app
+          codesign -dr - server/app/build/bin/wristkit.app
+          lipo -archs server/app/build/bin/wristkit.app/Contents/MacOS/wristkit
+
+      - name: 发布到 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.zip --title "$GITHUB_REF_NAME" --generate-notes
