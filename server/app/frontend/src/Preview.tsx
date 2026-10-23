@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react'
-import type {CSSProperties, MouseEvent, PointerEvent} from 'react'
+import type {CSSProperties, MouseEvent, PointerEvent, RefObject} from 'react'
 import {Sun, Watch} from 'lucide-react'
 import {Button} from '@/components/ui/button'
 import {Tabs, TabsList, TabsTrigger} from '@/components/ui/tabs'
@@ -188,14 +188,37 @@ function NodeView({node, rt}: { node: Node, rt: Runtime }) {
     }
 }
 
-function usePlugin(plugin: PluginInfo | undefined) {
+// 预览看不看得见：窗口藏到菜单栏、最小化、被别的窗口整个挡住时页面是 hidden；屏幕区域滚出视野也算看不见
+function useVisible(ref: RefObject<HTMLElement | null>) {
+    const [pageVisible, setPageVisible] = useState(!document.hidden)
+    const [inView, setInView] = useState(true)
+    useEffect(() => {
+        const onChange = () => setPageVisible(!document.hidden)
+        document.addEventListener('visibilitychange', onChange)
+        return () => document.removeEventListener('visibilitychange', onChange)
+    }, [])
+    useEffect(() => {
+        if (!ref.current) return
+        const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting))
+        io.observe(ref.current)
+        return () => io.disconnect()
+    }, [ref])
+    return pageVisible && inView
+}
+
+// 看不见的时候不画：插件照常跑（状态不丢），新画面先存着，看得见了再画最新的那一帧；Mac 上的数据也等看得见了再拉
+function usePlugin(plugin: PluginInfo | undefined, visible: boolean) {
     const [tree, setTree] = useState<Node | null>(null)
     const [error, setError] = useState('')
     const [rt, setRt] = useState<Runtime | null>(null)
     const [flash, setFlash] = useState(false)
+    const visibleRef = useRef(visible)
+    const latest = useRef<Node | null>(null)
+    visibleRef.current = visible
 
     useEffect(() => {
         setTree(null)
+        latest.current = null
         setError('')
         setRt(null)
         if (!plugin) return
@@ -210,7 +233,11 @@ function usePlugin(plugin: PluginInfo | undefined) {
             const key = (k: string) => `preview:${name}:${k}`
             const runtime = createRuntime({
                 scope: name + ':',
-                render: (t: Node) => alive && setTree(t),
+                render: (t: Node) => {
+                    if (!alive) return
+                    latest.current = t
+                    if (visibleRef.current) setTree(t)
+                },
                 error: (msg: string) => alive && setError(msg),
                 log: (level: string, msg: string) => console.log(`[${name}] ${level}`, msg),
                 asset: (path: string) => {
@@ -261,9 +288,14 @@ function usePlugin(plugin: PluginInfo | undefined) {
         }
     }, [plugin?.name, plugin?.code])
 
-    // Mac 上的数据变了，推给预览里的插件
+    // 重新看得见了：画看不见时攒下的最新一帧
     useEffect(() => {
-        if (!rt) return
+        if (visible && latest.current) setTree(latest.current)
+    }, [visible])
+
+    // Mac 上的数据变了，推给预览里的插件（看不见时不拉，看得见了拉一次）
+    useEffect(() => {
+        if (!rt || !visible) return
         let last: Record<string, string> = {}
         const sync = () => PluginStores().then(json => {
             const stores = JSON.parse(json) as Record<string, unknown>
@@ -275,7 +307,7 @@ function usePlugin(plugin: PluginInfo | undefined) {
         })
         sync()
         return EventsOn('stores', sync)
-    }, [rt])
+    }, [rt, visible])
 
     return {tree, error, rt, flash}
 }
@@ -286,7 +318,9 @@ export function Preview({state, run, plugin, onSelect}: {
     plugin: PluginInfo | undefined, onSelect: (name: string) => void,
 }) {
     const plugins = state.plugins ?? []
-    const {tree, error, rt, flash} = usePlugin(plugin)
+    const screenRef = useRef<HTMLDivElement>(null)
+    const visible = useVisible(screenRef)
+    const {tree, error, rt, flash} = usePlugin(plugin, visible)
 
     // 最外层不是 Pager 的界面（比如用 useSwipe 自己翻页的插件）：在屏幕上拖一下当成一次滑动。
     // Pager 自己处理拖动（跟手翻页），这里不管
@@ -328,11 +362,12 @@ export function Preview({state, run, plugin, onSelect}: {
             {/* 画个手环：机身里是屏幕 */}
             <div className="band">
                 <div className="band-body">
-                    <div className={`preview-screen ${flash ? 'flash' : ''}`} style={{width: SCREEN.width * ZOOM, height: SCREEN.height * ZOOM}}
+                    <div ref={screenRef} className={`preview-screen ${flash ? 'flash' : ''}`} style={{width: SCREEN.width * ZOOM, height: SCREEN.height * ZOOM}}
                          onDragStart={e => e.preventDefault()} onPointerDown={onPointerDown} onPointerUp={onPointerUp}
                          onClickCapture={onClickCapture}>
                         <div style={{width: SCREEN.width, height: SCREEN.height, zoom: ZOOM, overflow: 'hidden', background: '#000', color: '#fff'} as CSSProperties}>
-                            {tree && rt && <NodeView node={tree} rt={rt}/>}
+                            {/* 看不见时整个不画，猫的动画（Sprite 的定时器）也跟着停 */}
+                            {visible && tree && rt && <NodeView node={tree} rt={rt}/>}
                         </div>
                     </div>
                 </div>
