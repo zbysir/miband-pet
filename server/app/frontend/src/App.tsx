@@ -254,6 +254,16 @@ const LEGACY_NAMES: Record<string, string> = {
 
 function BandAppsCard({state, bundled, run}: { state: AppState, bundled: BundledApp[], run: Run }) {
     const installed = new Set(state.packages ?? [])
+    // 手环上的版本和 App 里带的比：一样就不用更新；App 里的新就提示更新到哪个版本
+    const status = (b: BundledApp, has: boolean) => {
+        if (!state.connected) return '连接后显示'
+        if (!has) return `未安装 · App 里带的是 v${b.versionCode}`
+        const v = state.versions?.[b.package]
+        if (v === undefined) return '已安装'
+        if (v === b.versionCode) return `已是最新 · v${v}`
+        if (v < b.versionCode) return `手环上是 v${v}，可以更新到 v${b.versionCode}`
+        return `手环上是 v${v}，比 App 里带的 v${b.versionCode} 新`
+    }
     return (
         <Card>
             <CardHeader>
@@ -264,15 +274,18 @@ function BandAppsCard({state, bundled, run}: { state: AppState, bundled: Bundled
                 {bundled.map(b => {
                     const has = installed.has(b.package)
                     const busy = state.installing === b.package
+                    const v = state.versions?.[b.package]
+                    const outdated = has && (v === undefined || v < b.versionCode)
+                    // 已经是最新（或更新）的：按钮弱一点，叫「重新安装」，手环上的应用坏了时用
                     return (
                         <div key={b.package} className="flex flex-col gap-2">
-                            <Row title={b.name} hint={`${!state.connected ? '连接后显示' : has ? '已安装' : '未安装'} · v${b.versionCode}`}>
+                            <Row title={b.name} hint={status(b, has)}>
                                 <div className="flex gap-2">
                                     {has && <Button variant="outline" size="sm" disabled={!state.connected || busy}
                                                     onClick={() => run('打开', () => Launch(b.package))}>在手环上打开</Button>}
-                                    <Button size="sm" disabled={!state.connected || !!state.installing}
-                                            onClick={() => run(has ? '更新' : '安装', () => Install(b.package))}>
-                                        {busy ? `${Math.round(state.installProgress * 100)}%` : has ? '更新' : '安装'}
+                                    <Button size="sm" variant={has && !outdated ? 'ghost' : 'default'} disabled={!state.connected || !!state.installing}
+                                            onClick={() => run(!has ? '安装' : outdated ? '更新' : '重新安装', () => Install(b.package))}>
+                                        {busy ? `${Math.round(state.installProgress * 100)}%` : !has ? '安装' : outdated ? `更新到 v${b.versionCode}` : '重新安装'}
                                     </Button>
                                 </div>
                             </Row>

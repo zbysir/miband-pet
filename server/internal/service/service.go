@@ -6,8 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -101,6 +101,7 @@ type State struct {
 	Transport  string         `json:"transport"` // classic / ble
 	LastError  string         `json:"lastError"`
 	Packages   []string       `json:"packages"`   // 手环上装了的快应用
+	Versions   map[string]int `json:"versions"`   // 手环上装了的快应用 → 版本号（versionCode）
 	Foreground string         `json:"foreground"` // 手环上正在前台的快应用
 	Usage      []usage.Source `json:"usage"`
 	Plugins    []plugin.Info  `json:"plugins"`
@@ -123,6 +124,7 @@ type Service struct {
 	mu         sync.Mutex
 	cfg        Config
 	packages   []string        // 手环上装了的渲染器（装了就是 [PackageRender]）
+	versions   map[string]int  // 手环上装了的快应用 → 版本号
 	legacy     []string        // 手环上还装着的旧版快应用
 	foreground map[string]bool // 快应用打开时发 hello、离开时发 bye
 	lastErr    string
@@ -237,6 +239,7 @@ func (s *Service) State() State {
 		Transport: s.transport,
 		LastError: s.lastErr,
 		Packages:  append([]string{}, s.packages...),
+		Versions:  maps.Clone(s.versions),
 		Legacy:    append([]string{}, s.legacy...),
 		Usage:     s.usageLocked(),
 		Plugins:   s.host.Plugins(),
@@ -441,10 +444,10 @@ func (s *Service) refreshApps() error {
 		return err
 	}
 	installed := map[string]bool{}
-	var versions []string
+	versions := map[string]int{}
 	for _, it := range items {
 		installed[it.GetPackageName()] = true
-		versions = append(versions, fmt.Sprintf("%s@%d", it.GetPackageName(), it.GetVersionCode()))
+		versions[it.GetPackageName()] = int(it.GetVersionCode())
 	}
 	var list, legacy []string
 	if installed[PackageRender] {
@@ -456,7 +459,7 @@ func (s *Service) refreshApps() error {
 		}
 	}
 	s.mu.Lock()
-	s.packages, s.legacy = list, legacy
+	s.packages, s.legacy, s.versions = list, legacy, versions
 	s.foreground = map[string]bool{} // 由快应用重新发 hello
 	s.mu.Unlock()
 	s.publishBand()

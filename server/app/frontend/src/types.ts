@@ -22,6 +22,7 @@ export interface AppState {
     transport: '' | 'classic' | 'ble'
     lastError: string
     packages: string[] | null
+    versions: Record<string, number> | null // 手环上装了的快应用 → 版本号（versionCode）
     foreground: string
     usage: UsageSource[] | null
     plugins: PluginInfo[] | null
