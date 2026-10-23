@@ -288,7 +288,7 @@ export function Preview({state, run, plugin, onSelect}: {
     const plugins = state.plugins ?? []
     const {tree, error, rt, flash} = usePlugin(plugin)
 
-    // 最外层不是 Pager 的界面（比如 Agents 列表用 useSwipe 翻页）：在屏幕上拖一下当成一次滑动。
+    // 最外层不是 Pager 的界面（比如用 useSwipe 自己翻页的插件）：在屏幕上拖一下当成一次滑动。
     // Pager 自己处理拖动（跟手翻页），这里不管
     const gesture = useRef<{ x: number, y: number, moved: boolean } | null>(null)
     const onPointerDown = (ev: PointerEvent<HTMLDivElement>) => {

@@ -16,6 +16,11 @@ import (
 	"time"
 )
 
+// BaseStores 是基座给插件的数据，所有插件都能读；其它数据只有推它的插件自己能读（插件之间不共用数据）。
+//   - screen：手环屏幕大小（手环上的页面给的）
+//   - band：手环的状态 {connected, foreground}（foreground 是手环上 wristkit 是否开在前台）
+var BaseStores = []string{"screen", "band"}
+
 // 单条消息不能太大：64KB 会让手环不再确认数据帧，连接卡死（docs/render-spike.md）。
 // 代码和图片按 base64 分片发，每片不超过这么多字符。
 const chunkChars = 6000
@@ -38,6 +43,8 @@ type Host struct {
 	DataDir string
 	// NotifyBand 给手环发通知（mac.js 的 notifyBand）。
 	NotifyBand func(title, body string) error
+	// Wake 把手环点亮并显示这个插件（mac.js 的 wakeBand）。
+	Wake func(plugin string) error
 	// OnStore 在任何数据变化时调用（App 的预览用），不要阻塞。
 	OnStore func(name string)
 
@@ -497,25 +504,12 @@ func (h *Host) Disconnected() {
 	h.mu.Unlock()
 }
 
-// Show 让手环显示这个插件（App 里切换）。渲染器不在前台时，等它打开（hello）后再切。
+// Show 让手环显示这个插件（App 里切换、插件 wakeBand）。渲染器不在前台时，等它打开（hello）后再切。
 func (h *Host) Show(name string) {
 	h.mu.Lock()
 	h.outShow = name
 	h.mu.Unlock()
 	h.markDirty()
-}
-
-// ShowFirst 让手环显示第一个插件（提醒时把猫打开）。
-func (h *Host) ShowFirst() {
-	h.mu.Lock()
-	var name string
-	if len(h.plugins) > 0 {
-		name = h.plugins[0].Name
-	}
-	h.mu.Unlock()
-	if name != "" {
-		h.Show(name)
-	}
 }
 
 // ---------- 发送 ----------

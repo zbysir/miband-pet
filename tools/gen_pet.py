@@ -22,6 +22,9 @@ from PIL import Image, ImageDraw
 GRID = 40
 SCALE = 4
 OUT = os.environ.get("PET_OUT") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server", "plugins", "agent-cat", "assets")
+# App 自己的一套（菜单栏图标、连接向导里的猫），和插件的分开放，只要用到的几种动作
+APP_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server", "app", "frontend", "public", "pet")
+APP_STATES = ("sleep", "work", "celebrate")
 
 # 坐着的猫，正面（28 列 × 28 行），左右对称（第 c 列 ↔ 第 24-c 列）。尾巴不在格子图里，见 draw_tail。
 # 第 0~17 行是头，21 格宽（第 2~22 列）：小耳朵，耳朵内侧斜线直接接到平的头顶（中间不要拱起）；
@@ -254,14 +257,17 @@ def main():
             row.append(frames)
         rows.append(row)
 
-    for skin in SKINS:  # 删掉旧帧（比如帧数变少时多出来的）
-        shutil.rmtree(os.path.join(OUT, skin), ignore_errors=True)
-    for name, data in files.items():
-        path = os.path.join(OUT, name)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as f:
-            f.write(data)
-    print("帧目录:", OUT)
+    for out, keep in ((OUT, None), (APP_OUT, APP_STATES)):
+        for skin in SKINS:  # 删掉旧帧（比如帧数变少时多出来的）
+            shutil.rmtree(os.path.join(out, skin), ignore_errors=True)
+        for name, data in files.items():
+            if keep and name.split("/")[1].split("_")[0] not in keep:
+                continue
+            path = os.path.join(out, name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(data)
+        print("帧目录:", out)
 
     if len(sys.argv) > 1:
         # 预览：每行一种猫，依次是每个状态的所有帧

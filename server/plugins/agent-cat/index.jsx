@@ -1,7 +1,7 @@
 // Agent 猫：一只像素猫代表所有 agent 的整体状态。
 // 有 agent 卡住了它举牌，卡太久（默认 5 分钟）就着急；刚跑完一个就庆祝 8 秒，有在跑的就敲笔记本，都空闲时睡觉。
 // 下面的气泡显示一个需要关注的 agent，点猫或气泡换下一个。
-// 右下角的小鱼干是今天完成了几个任务（Mac 记的）。标题下面是额度（哪一项看配置，默认用得最多的那项）。
+// 右下角的小鱼干是今天完成了几个任务。agent 状态、小鱼干由本插件的 herdr.js 在 Mac 上读 herdr、记下来。标题下面是额度（哪一项看配置，默认用得最多的那项）。
 // 往上翻（跟手的 Pager）或点小鱼干看第二屏「今日」（today.jsx）。额度由本插件的 mac.js 在 Mac 上读。
 import { View, Text, Image, Sprite, Row, Spacer, Pager, useStore, useState, useEffect, useRef, useInterval, useScreen, useConfig, asset, vibrate } from 'miband'
 import { Today, fmtReset } from './today'
@@ -142,7 +142,6 @@ export default function AgentCat() {
 
 function CatPage({ openToday }) {
   const agents = useStore('agents') || []
-  const settings = useStore('settings') || {}
   const stats = useStore('stats') || { today: { done: 0 } }
   const usage = useStore('usage') // 本插件 mac.js 读的额度
   const config = useConfig()
@@ -150,7 +149,7 @@ function CatPage({ openToday }) {
   const skin = config.skin || 'orange'
   const screen = useScreen()
   const celebrating = useCelebrate(agents)
-  const impatient = useImpatient(agents, settings.impatientMin ?? 5)
+  const impatient = useImpatient(agents, config.impatientMin ?? 5)
   const [focusId, setFocusId] = useState('')
 
   const n = countBy(agents)

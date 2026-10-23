@@ -7,8 +7,7 @@
 自带的插件把 AI agent（[herdr](https://herdr.dev) 管理的 Claude Code、Codex 等）的状态放到手腕上：
 
 - **Agent 猫**：一只像素猫代表所有 agent 的整体状态。有 agent 卡住了它举牌，卡太久就着急；跑完一个就庆祝，有在跑的就敲笔记本，都空闲时睡觉。标题下面是 Claude Code / Codex 的额度，右下角的小鱼干是今天完成了几个任务。往上翻是「今日」：最近 7 天的完成数和全部额度。
-- **Agents**：按状态列出每个 agent 的项目和任务。
-- **提醒**：agent 跑完、卡住时手环震一下或亮屏。
+- **提醒**：agent 跑完、卡住时手环发通知震一下，或者只亮屏；有 agent 等你回答时还可以让手环一直亮着。
 
 <p align="center"><img src="docs/skins.png" alt="猫有三种：橘猫、灰猫（中华田园猫）、白猫（美短）" width="600"></p>
 
@@ -40,11 +39,11 @@ make app      # 生成 server/app/build/bin/wristkit.app
 
 ## 日常使用
 
-- **App 窗口**：左边是手环预览，和手环上跑的是同一份插件、同一份数据，可以直接点、拖动翻页（右键当长按）；「在手环上显示」把手环切到这个插件，「亮屏」把手环点亮。右边是设置：当前插件的设置（比如手环上是哪只猫、首页显示哪个额度）、菜单栏的猫、提醒方式、插件列表。
-- **菜单栏**：关掉窗口后 App 留在菜单栏继续工作（菜单栏上的猫跟着 agent 状态动），从菜单栏「退出」才会真正退出。
-- **提醒**：agent 开始跑、跑完、卡住时提醒。可以选只亮屏（不震动）、只发通知（震动）或都要；「自动」是手环上开着 wristkit 时只亮屏，否则发通知。还可以设「卡住多久算太久」和「有 agent 等你回答时保持亮屏」。
+- **App 窗口**：左边是手环预览，和手环上跑的是同一份插件、同一份数据，可以直接点、拖动翻页（右键当长按）；「在手环上显示」把手环切到这个插件，「亮屏」把手环点亮。右边是设置：当前插件的设置、菜单栏的猫、插件列表。
+- **菜单栏**：关掉窗口后 App 留在菜单栏继续工作，从菜单栏「退出」才会真正退出。菜单栏的猫是 App 自带的，只是个图标，和手环上的猫分开选。
+- **提醒**：在 Agent 猫的设置里。agent 跑完、卡住（可选开始跑）时发通知（手环震动）或者只亮屏（把手环点亮、切到猫，不震动）；还可以设「卡住几分钟算太久」（猫着急，再提醒一次）和「有 agent 等你回答时保持亮屏」。
 - **Claude Code 额度**：Codex 的额度直接从它的会话日志读，不用设置。Claude Code 只把额度告诉状态栏命令，要在 App 里打开「显示 Claude Code 额度」：App 会把 Claude Code 的状态栏换成一个小脚本，先存一份数据再交给你原来的状态栏命令，状态栏显示不变；关掉会原样还原，改之前会备份 `~/.claude/settings.json`。只有 Pro / Max 订阅才有额度。
-- **数据放在哪**：`~/Library/Application Support/miband-pet/`。`config.json` 和 `session.json` 是配置和小米账号登录态（权限 600），`stats.json` 是每天完成了几个任务，`plugins/` 是你自己的插件。
+- **数据放在哪**：`~/Library/Application Support/miband-pet/`。`config.json` 和 `session.json` 是配置和小米账号登录态（权限 600），`plugin-data/` 是插件在 Mac 上存的数据（比如 Agent 猫记的每天完成了几个任务），`plugins/` 是你自己的插件。
 
 > 这个项目以前叫 miband pet。为了不影响已经在用的人，数据目录（`miband-pet`）、App 标识（`dev.bysir.miband-pet`）、手环上应用的包名（`dev.bysir.mibandpet`）都沿用原来的。
 
@@ -71,7 +70,7 @@ export default function Counter() {
 { "name": "counter", "title": "计数" }
 ```
 
-写法和 React 一样（函数组件 + hooks），布局是 flex。插件的界面在手环上跑，点击、翻页都在手环本地处理；要读 Mac 上的文件、发通知、执行命令，就再写一部分在 Mac 上跑的代码，和手环上的界面互相传数据。插件可以声明配置项，App 会照着画出设置表单。想改内置插件的话，在 App 里点它的「复制出来改」。
+写法和 React 一样（函数组件 + hooks），布局是 flex。插件的界面在手环上跑，点击、翻页都在手环本地处理；要读 Mac 上的文件、执行命令、发通知、点亮手环，就再写一部分在 Mac 上跑的代码，和手环上的界面互相传数据。Agent 猫读 herdr、提醒都是这么做的，本体不认识 herdr。插件可以声明配置项，App 会照着画出设置表单。想改内置插件的话，在 App 里点它的「复制出来改」。
 
 完整说明见 [docs/plugins.md](docs/plugins.md)。
 
@@ -83,7 +82,7 @@ export default function Counter() {
  │ 插件宿主：编译插件（esbuild），     │ ───────────▶ │ 通用渲染器：用 new Function │
  │ 按哈希推代码和图片，推数据          │  代码 / 数据  │ 加载插件，hooks 运行时算出  │
  │ 插件在 Mac 上跑的部分（goja）       │ ◀─────────── │ 界面树，照着画；点击、翻页  │
- │ herdr 状态、提醒、菜单栏            │  调用 / 日志  │ 在手环本地处理              │
+ │ 连手环、菜单栏                      │  调用 / 日志  │ 在手环本地处理              │
  └─────────────────────────────────────┘              └─────────────────────────────┘
 ```
 
@@ -107,13 +106,12 @@ make test       # 跑 Go 测试（插件测试会在 goja 里跑手环上的同�
 - `server/app/`：macOS App。Wails v2 + React + shadcn/ui，界面跑在系统自带的 WKWebView 里。
 - `server/internal/`
   - `plugin/`：插件宿主（编译插件、推代码图片和数据、插件在 Mac 上跑的部分、权限、配置、热更新）。
-  - `service/`：常驻服务（连手环、读 herdr、提醒、每日统计）。App 和命令行共用。
+  - `service/`：常驻服务（连手环、跑插件）。App 和命令行共用。
   - `xiaomi/`：小米手环协议（SPP v2 帧、鉴权、AES-CCM/CTR、停等发送、通知、快应用安装和消息）。`go test` 里有个模拟手环做端到端测试，加密结果用 `testdata/vectors.json` 和原 Python 实现对照。
   - `bt/`：经典蓝牙 RFCOMM 和 BLE（cgo 调 macOS 的蓝牙框架）。
-  - `herdr/`：读 `herdr agent list`、算状态变化。
   - `usage/`：接管 Claude Code 状态栏拿额度的开关。
   - `micloud/`：扫码登录小米账号、拉手环密钥。
-- `server/plugins/`：内置插件（Agent 猫、Agents），打包进 App。
+- `server/plugins/`：内置插件（Agent 猫：手环上的界面 + Mac 上读 herdr、额度、提醒），打包进 App。
 - `render-app/`：手环上的渲染器。运行时在 `src/common/runtime.js`；页面模板由 `tools/gen_template.py` 生成，节点树格式和消息协议写在这两个文件开头。
 - `tools/gen_pet.py`、`tools/gen_fish.py`：逐像素手绘猫和小鱼干（怎么画见 [docs/pixel-cat.md](docs/pixel-cat.md)）。
 - `spike/`、`server/cmd/spike/`：真机实验的代码（[docs/render-spike.md](docs/render-spike.md)）。
@@ -137,7 +135,7 @@ rm key.pem cert.pem cert.p12
 App 和命令行版不要同时运行：手环同一时间只接受一个连接。
 
 ```sh
-server/miband app                 # 常驻：跑插件、推给手环；agent 跑完/卡住时提醒
+server/miband app                 # 常驻：跑插件、推给手环
 server/miband notify 标题 正文     # 发一条通知
 server/miband apps                # 列出手环上的快应用
 server/miband launch [包名]        # 把快应用打开到前台（默认 wristkit），手环会亮屏
@@ -145,7 +143,7 @@ server/miband key                 # 扫码登录小米账号，拉手环的密�
 server/miband install render-app/dist/dev.bysir.mibandpet.debug.*.rpk
 ```
 
-配置读 `./config.json`（或用 `-config` 指定；App 的配置在 `~/Library/Application Support/miband-pet/config.json`）：`auth_key`、`address` 是手环的密钥和地址；`alert` 是提醒方式（`auto` / `wake` / `notify` / `both`）；`notify: false` 完全不提醒，`notify_start: false` 开始跑时不提醒。
+配置读 `./config.json`（或用 `-config` 指定；App 的配置在 `~/Library/Application Support/miband-pet/config.json`）：`auth_key`、`address` 是手环的密钥和地址；`plugin_config` 是插件的配置，比如 `{"agent-cat": {"alert": "wake"}}`（提醒方式 `notify` / `wake` / `off`）。
 
 ### 踩过的坑
 

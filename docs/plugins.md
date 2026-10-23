@@ -1,10 +1,12 @@
 # 写插件
 
-手环上显示的界面都是插件：Agent 猫、Agents 列表是内置插件，你也可以自己写。手环上一次显示一个插件，在 App 的「插件」卡片里点「切换」换。插件用 JSX 写，写法和 React 一样。
+手环上显示的界面都是插件：Agent 猫是内置插件，你也可以自己写。手环上一次显示一个插件，在 App 的「插件」卡片里点「切换」换。插件用 JSX 写，写法和 React 一样。
 
-插件**在手环上跑**：Mac 把插件编译成 JS，连同图片推到手环上的渲染器（`render-app`）；手环缓存下来，在本地执行。点击、`useState`、翻页都在手环上处理，不经过 Mac，反应很快；Mac 断开时插件照样能点，只是数据（agents 等）不再更新。不用重装手环上的应用，保存文件就生效。
+插件**在手环上跑**：Mac 把插件编译成 JS，连同图片推到手环上的渲染器（`render-app`）；手环缓存下来，在本地执行。点击、`useState`、翻页都在手环上处理，不经过 Mac，反应很快；Mac 断开时插件照样能点，只是 Mac 推来的数据不再更新。不用重装手环上的应用，保存文件就生效。
 
 内置插件的源码在 `server/plugins/` 下，可以当例子看。
+
+插件只管手环上的一页，每个插件都有界面（没有只在后台跑的插件）。插件之间不共用数据：想要别的插件的功能，把它的代码复制一份过来。
 
 ## 放在哪
 
@@ -30,7 +32,7 @@ App 里「插件」卡片上有「打开插件目录」。插件目录里的文�
 
 - `name`：唯一名字。
 - `title`：显示名，出错页和 App 里会用到。
-- `order`：在插件列表里的顺序，小的在前；排第一的是提醒时切回的那个。Agent 猫是 0，Agents 是 10，不写默认 100。
+- `order`：在插件列表里的顺序，小的在前。Agent 猫是 0，不写默认 100。
 - `permissions`：`mac.js` 要用的能力，见下面「Mac 端：mac.js」。
 - `settings`：插件的配置项，见下面「配置」。
 - `main`：入口文件，默认 `index.jsx`。
@@ -105,19 +107,16 @@ export default function Counter() {
 | `useConfig()` | 插件的配置（见下面「配置」），用户在 App 里改了会重新渲染 |
 | `asset(path)` | 插件目录里的 png（路径相对插件目录，如 `assets/a.png`）。图片按内容哈希推到手环，推过就不再推 |
 | `vibrate('short' \| 'long')` | 手环震动（只在这一页正显示时有效） |
-| `call(name, ...args)` | 让 Mac 做事，比如 `call('feed')` 喂一条小鱼干。不等结果：Mac 做完会更新对应的数据（`useStore`）。现在有的：`feed` |
+| `call(name, ...args)` | 让本插件的 `mac.js` 做事（交给它 `on(name, fn)` 注册的函数）。不等结果：`mac.js` 做完 `publish` 新数据，`useStore` 读到 |
 | `storage.get(key)` / `storage.set(key, value)` | 插件自己的持久化数据，存在手环上（离开应用时写入） |
 | `setTimeout` `setInterval` `console.log` | 照常用；`console` 的输出会发回 Mac，在 App 的日志里 |
 
-`useStore` 读的是 Mac 推过来的数据（插件本身在手环上，读不到 Mac 上的文件和命令）：
+`useStore(name)` 读的是本插件 `mac.js` 里 `publish(name, …)` 推的数据（插件本身在手环上，读不到 Mac 上的文件和命令，要读就写 `mac.js`）。读不到别的插件推的。另外有两项是基座给所有插件的：
 
 | 名字 | 内容 |
 |---|---|
-| `agents` | herdr 的 agent 列表：`[{ id, agent, project, title, status, since }]`，`status` 是 `blocked` / `working` / `done` / `idle` / `unknown`；`since` 是进入当前状态的时间（毫秒，Mac 开始观察之前就是这个状态的为 0） |
-| `settings` | `{ pet, impatientMin }`：App 里选的猫（`orange` / `gray` / `white`），卡住超过几分钟算太久（0 表示不管） |
-| `stats` | 小鱼干：`{ today: { done, fed }, fishLeft, fedTotal, days: [{ date, weekday, done }] }`。agent 每跑完一个任务（working → done/idle）得一条，Mac 记账，`days` 是最近 7 天 |
-| `agent-cat:usage` | 额度（Agent 猫插件的 mac.js 推的）：`[{ agent, windows: [{ name, used, resetsAt }], updated }]`。`agent` 是 `claude` / `codex`，`name` 如 `5h` / `7d`，`used` 是百分比，`resetsAt` 是 Unix 秒。读不到的不出现（Claude Code 要在 App 里打开「显示 Claude Code 额度」，只有 Pro/Max 有） |
 | `screen` | 同 `useScreen()` |
+| `band` | `{ connected, foreground }`：手环连着没有，手环上的 wristkit 开在前台没有 |
 
 ## 配置
 
@@ -179,21 +178,22 @@ export default function Hello() {
 | 名字 | 说明 |
 |---|---|
 | `on(name, fn)` | 手环上 `call(name, ...args)` 时调用 `fn(...args)` |
-| `publish(name, value)` | 推数据给手环，本插件里 `useStore(name)` 读到；别的插件用 `useStore('插件名:name')` 读 |
-| `getStore(name)` / `onStore(name, fn)` | 读 Mac 上的数据（`agents`、`stats`、`settings`…）/ 数据变了时调用 |
+| `publish(name, value)` | 推数据给手环，本插件里 `useStore(name)` 读到 |
+| `getStore(name)` / `onStore(name, fn)` | 读本插件 `publish` 过的数据和 `band` / 数据变了时调用 |
 | `getConfig()` / `onConfig(fn)` | 插件的配置 / 用户改了配置时调用 |
 | `storage.get(key)` / `storage.set(key, value)` | Mac 这边的持久化数据（`~/Library/Application Support/miband-pet/plugin-data/<name>.json`） |
 | `notifyMac(title, body)` / `notifyBand(title, body)` | Mac 弹通知 / 手环发通知（震动）。要 `notify` 权限 |
+| `wakeBand()` | 把手环点亮并显示本插件（打开手环上的 wristkit，不震动）。要 `notify` 权限；手环没连上时抛异常 |
 | `readFile(path, { tail })` / `readDir(path)` / `stat(path)` | 读文件（`tail` 只读最后多少字节，适合大日志）。只能读 `read` 权限里列的目录 |
-| `exec(cmd, args)` | 执行命令，返回 `{ code, stdout, stderr }`，15 秒超时。要 `exec` 权限 |
+| `exec(cmd, args)` | 执行命令，返回 `{ code, stdout, stderr }`，15 秒超时。只能执行 `exec` 权限里列的命令；找不到命令时抛异常（从访达打开的 App 的 PATH 很短，所以还会找 `~/.local/bin`、`/opt/homebrew/bin`、`/usr/local/bin` 这些地方） |
 | `home` | 用户目录 |
 | `setTimeout` `setInterval` `console.log` | 照常用，`console` 输出在 App 的日志里 |
 
 App 有时会让插件马上刷新数据（比如打开「显示 Claude Code 额度」之后），会调用所有插件 mac.js 里 `on('refresh', fn)` 注册的函数；读外部数据的插件注册一下。
 
-**权限**：`manifest.json` 的 `permissions` 里声明 `notify`（发通知）、`read`（能读的目录，可以用 `~`）、`exec`（执行命令）。用户插件要了权限的，要在 App 的「插件」里点「允许」，`mac.js` 才会跑；权限改了要重新允许。没要权限的 `mac.js` 直接跑。内置插件不用问。
+**权限**：`manifest.json` 的 `permissions` 里声明 `notify`（发通知、点亮手环）、`read`（能读的目录，可以用 `~`）、`exec`（能执行的命令名，如 `["herdr"]`）。用户插件要了权限的，要在 App 的「插件」里点「允许」，`mac.js` 才会跑；权限改了要重新允许。没要权限的 `mac.js` 直接跑。内置插件不用问。
 
-例子：Agent 猫插件的 `server/plugins/agent-cat/mac.js` 读 Claude Code 和 Codex 的额度，`publish('usage', …)` 给手环。
+例子：Agent 猫插件的 `server/plugins/agent-cat/herdr.js` 每 3 秒跑一次 `herdr agent list`，推 agent 状态、记每天完成了几个、跑完和卡住时提醒；`mac.js` 读 Claude Code 和 Codex 的额度，`publish('usage', …)` 给手环。
 
 ## 在 Mac 上预览和调试
 
@@ -207,7 +207,7 @@ App 里的「插件预览」用和手环上同一份运行时、同一份编译�
 
 - **mac.js 跑在 Mac 上，界面跑在手环上**，两边只能通过 `call` 和 `publish` 传数据（经蓝牙，几十毫秒）。
 - **View 最多嵌套 6 层**（根算第 1 层）。超过会显示出错页。
-- **新建节点很慢，约 10ms 一个**；结构不变、只改文字和样式很快。所以一页控制在几十个节点以内，长列表分页（参考 `server/plugins/agents`），不要每次渲染都换 `key`。
+- **新建节点很慢，约 10ms 一个**；结构不变、只改文字和样式很快。所以一页控制在几十个节点以内，长列表分页（`useSwipe` 翻页），不要每次渲染都换 `key`。
 - **手环的 JS 比 Mac 慢上百倍**（10 万次循环约 0.3 秒）。渲染函数里别做重计算。
 - 支持到 ES2020 的语法；只能 `import` `miband` 和插件目录里的文件。
 - 没有滚动容器。动画用 `Sprite` 在手环本地播，不要用定时器一帧帧改界面。

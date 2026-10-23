@@ -94,4 +94,4 @@
 
 手环系统按图片路径缓存图片：快应用覆盖安装、甚至卸载重装之后，同一路径还是显示旧图，重启手环才会更新。
 
-所以脚本把帧放在按帧内容哈希命名的目录里（`pet-app/src/common/pet/<哈希>/<皮肤>/`），橘猫的目录写进 `pet-app/src/common/pet/index.js`，快应用从那里拼路径。形象一改，路径就变，手环直接读新图。Mac App 装到手环前只留选中的那只猫，并把路径里的 `orange` 换掉（`server/internal/rpk`），换猫时路径也跟着变。Mac App 没有这个问题，`make app` 复制帧时去掉哈希这层，App 里还是 `/pet/<皮肤>/`。
+所以脚本把帧放在按帧内容哈希命名的目录里（`pet-app/src/common/pet/<哈希>/<皮肤>/`），橘猫的目录写进 `pet-app/src/common/pet/index.js`，快应用从那里拼路径。形象一改，路径就变，手环直接读新图。Mac App 装到手环前只留选中的那只猫，并把路径里的 `orange` 换掉（`server/internal/rpk`），换猫时路径也跟着变。Mac App 没有这个问题：它有自己的一套帧（`server/app/frontend/public/pet/<皮肤>/`，菜单栏图标和连接向导用），和手环上 Agent 猫插件的帧分开放，都由 `tools/gen_pet.py` 生成。

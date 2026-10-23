@@ -147,6 +147,12 @@ func (a *App) stopService() {
 func (a *App) restartService() {
 	a.stopService()
 	cfg, err := service.LoadConfig(a.cfgPath)
+	if err == nil && cfg.MigrateLegacy() {
+		// 旧版的提醒设置搬进了 Agent 猫插件的配置
+		if err := cfg.Save(a.cfgPath); err != nil {
+			slog.Warn("保存配置失败", "err", err)
+		}
+	}
 	if err == nil {
 		err = cfg.Validate()
 	}
@@ -239,26 +245,7 @@ func trayText(st AppState) string {
 	case !st.Connected:
 		return "正在连接手环…"
 	}
-	var blocked, working int
-	for _, a := range st.Agents {
-		switch a.Status {
-		case "blocked":
-			blocked++
-		case "working":
-			working++
-		}
-	}
-	parts := []string{"已连接"}
-	if blocked > 0 {
-		parts = append(parts, fmt.Sprintf("%d 个等你处理", blocked))
-	}
-	if working > 0 {
-		parts = append(parts, fmt.Sprintf("%d 个在忙", working))
-	}
-	if blocked == 0 && working == 0 {
-		parts = append(parts, "都在休息")
-	}
-	return strings.Join(parts, " · ")
+	return "手环已连接"
 }
 
 // ---------- 小米账号：扫码登录拿 auth key ----------
@@ -391,32 +378,7 @@ func (a *App) SaveSetup(authKey, address string) error {
 	return nil
 }
 
-func (a *App) UpdateSettings(notify, notifyStart bool, alert string) error {
-	svc, err := a.service()
-	if err != nil {
-		return err
-	}
-	cfg := svc.UpdateSettings(notify, notifyStart, alert)
-	a.mu.Lock()
-	a.cfg = &cfg
-	a.mu.Unlock()
-	return cfg.Save(a.cfgPath)
-}
-
-// SetKeepAwake 改「有 agent 等你回答时保持亮屏」：on 开关，seconds 每隔几秒亮一次屏（5~60）。
-func (a *App) SetKeepAwake(on bool, seconds int) error {
-	svc, err := a.service()
-	if err != nil {
-		return err
-	}
-	cfg := svc.SetKeepAwake(on, seconds)
-	a.mu.Lock()
-	a.cfg = &cfg
-	a.mu.Unlock()
-	return cfg.Save(a.cfgPath)
-}
-
-// SetPet 换猫：Mac 界面和手环上的 Agent 猫插件都马上换。
+// SetPet 换菜单栏的猫（手环上的猫在 Agent 猫插件的设置里）。
 func (a *App) SetPet(skin string) error {
 	svc, err := a.service()
 	if err != nil {
@@ -699,19 +661,6 @@ func (a *App) RevokePlugin(name string) error {
 		return err
 	}
 	cfg := svc.RevokePlugin(name)
-	a.mu.Lock()
-	a.cfg = &cfg
-	a.mu.Unlock()
-	return cfg.Save(a.cfgPath)
-}
-
-// SetImpatient 改「卡住超过几分钟猫着急、再提醒一次」，0 表示关。
-func (a *App) SetImpatient(minutes int) error {
-	svc, err := a.service()
-	if err != nil {
-		return err
-	}
-	cfg := svc.SetImpatient(minutes)
 	a.mu.Lock()
 	a.cfg = &cfg
 	a.mu.Unlock()

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -22,14 +23,16 @@ import (
 // mac.js 在 Mac 上跑（goja，每个插件一个运行时、一个事件循环），import ... from 'miband/mac' 拿到下面 macAPI 里的东西。
 // 它和手环上的插件配合：手环上 call(name, ...args) 交给这里 on(name, fn) 注册的函数；
 // 这里 publish(name, value)，手环上的插件 useStore(name) 就能读到（只有本插件读得到）。
+// 插件之间不共用数据：getStore / onStore 只能读本插件推的和基座给的（BaseStores）。
 const macAPI = `
 var __api = {
   on: function (name, fn) { __mac.on(name, fn) },
   publish: function (name, value) { __mac.publish(name, JSON.stringify(value === undefined ? null : value)) },
   getStore: function (name) { var s = __mac.getStore(name); return s ? JSON.parse(s) : undefined },
   onStore: function (name, fn) { __mac.onStore(name, function (s) { fn(JSON.parse(s)) }) },
-  getConfig: function () { var s = __mac.getStore(__mac.name + ':config'); return s ? JSON.parse(s) : {} },
-  onConfig: function (fn) { __mac.onStore(__mac.name + ':config', function (s) { fn(JSON.parse(s)) }) },
+  getConfig: function () { var s = __mac.getStore('config'); return s ? JSON.parse(s) : {} },
+  onConfig: function (fn) { __mac.onStore('config', function (s) { fn(JSON.parse(s)) }) },
+  wakeBand: function () { __mac.wakeBand() },
   notifyMac: function (title, body) { __mac.notifyMac(String(title), body == null ? '' : String(body)) },
   notifyBand: function (title, body) { __mac.notifyBand(String(title), body == null ? '' : String(body)) },
   readFile: function (path, opts) { return __mac.readFile(String(path), (opts && opts.tail) || 0) },
@@ -118,8 +121,23 @@ func (m *macRuntime) setup(vm *goja.Runtime) error {
 	set("publish", func(name, value string) {
 		m.h.SetStore(m.p.Name+":"+name, json.RawMessage(value))
 	})
-	set("getStore", func(name string) string { return m.h.storeJSON(name) })
-	set("onStore", func(name string, fn goja.Callable) { m.storeSubs[name] = append(m.storeSubs[name], fn) })
+	set("getStore", func(name string) string { return m.h.storeJSON(m.storeName(name)) })
+	set("onStore", func(name string, fn goja.Callable) {
+		key := m.storeName(name)
+		m.storeSubs[key] = append(m.storeSubs[key], fn)
+	})
+	// 把手环点亮并显示本插件（把手环上的 wristkit 打开到前台，亮屏不震动）
+	set("wakeBand", func() {
+		if !perms.Notify {
+			m.throw(errors.New("没有提醒的权限（manifest.json 里 permissions.notify）"))
+		}
+		if m.h.Wake == nil {
+			m.throw(errors.New("手环没连上"))
+		}
+		if err := m.h.Wake(m.p.Name); err != nil {
+			m.throw(err)
+		}
+	})
 	set("notifyMac", func(title, body string) {
 		if !perms.Notify {
 			m.throw(errors.New("没有发通知的权限（manifest.json 里 permissions.notify）"))
@@ -181,17 +199,21 @@ func (m *macRuntime) setup(vm *goja.Runtime) error {
 		return string(raw)
 	})
 	set("exec", func(cmd, argsJSON string) string {
-		if !perms.Exec {
-			m.throw(errors.New("没有执行命令的权限（manifest.json 里 permissions.exec）"))
+		if !slices.Contains(perms.Exec, cmd) {
+			m.throw(fmt.Errorf("没有运行 %s 的权限（manifest.json 里 permissions.exec）", cmd))
+		}
+		bin, err := lookCommand(cmd)
+		if err != nil {
+			m.throw(err)
 		}
 		var args []string
 		_ = json.Unmarshal([]byte(argsJSON), &args)
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		c := exec.CommandContext(ctx, cmd, args...)
+		c := exec.CommandContext(ctx, bin, args...)
 		var stdout, stderr bytes.Buffer
 		c.Stdout, c.Stderr = &stdout, &stderr
-		err := c.Run()
+		err = c.Run()
 		code := 0
 		if err != nil {
 			var ee *exec.ExitError
@@ -283,23 +305,32 @@ func (m *macRuntime) allowed(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	real := p
-	if r, err := filepath.EvalSymlinks(p); err == nil {
-		real = r
-	}
+	real := resolve(p)
 	for _, root := range m.p.Permissions.Read {
 		r, err := filepath.Abs(expandHome(root))
 		if err != nil {
 			continue
 		}
-		if rr, err := filepath.EvalSymlinks(r); err == nil {
-			r = rr
-		}
+		r = resolve(r)
 		if real == r || strings.HasPrefix(real, r+string(filepath.Separator)) {
 			return p, nil
 		}
 	}
 	return "", fmt.Errorf("没有读 %s 的权限（manifest.json 里 permissions.read）", path)
+}
+
+// resolve 解开符号链接；文件还不存在时解开它最近的存在的上级目录（不然和解开了的允许目录对不上，stat 一个还没生成的文件也会报没权限）
+func resolve(p string) string {
+	rest := ""
+	for dir := p; ; dir = filepath.Dir(dir) {
+		if r, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(r, rest)
+		}
+		if filepath.Dir(dir) == dir {
+			return p
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+	}
 }
 
 func readTail(path string, tail int64) ([]byte, error) {
@@ -322,6 +353,33 @@ func readTail(path string, tail int64) ([]byte, error) {
 		err = nil
 	}
 	return buf, err
+}
+
+// storeName：插件读数据时的名字。基座给的（BaseStores）直接读；其它的都是本插件 publish 的
+func (m *macRuntime) storeName(name string) string {
+	if slices.Contains(BaseStores, name) {
+		return name
+	}
+	return m.p.Name + ":" + name
+}
+
+// lookCommand 找命令：从访达打开的 App 拿到的 PATH 很短（没有 ~/.local/bin、Homebrew），
+// 所以 PATH 里找不到时再看几个常见的安装位置
+func lookCommand(name string) (string, error) {
+	if strings.ContainsRune(name, '/') {
+		return "", fmt.Errorf("命令只能写名字，不能带路径：%s", name)
+	}
+	if p, err := exec.LookPath(name); err == nil {
+		return p, nil
+	}
+	home, _ := os.UserHomeDir()
+	for _, dir := range []string{filepath.Join(home, ".local/bin"), "/opt/homebrew/bin", "/usr/local/bin", filepath.Join(home, "go/bin"), filepath.Join(home, ".cargo/bin")} {
+		p := filepath.Join(dir, name)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("没找到命令 %s", name)
 }
 
 func expandHome(p string) string {

@@ -76,13 +76,13 @@ func (s Setting) check(v any) (any, error) {
 
 // Permissions 是 mac.js 能做的敏感的事。
 type Permissions struct {
-	Notify bool     `json:"notify,omitempty"` // 发通知（Mac 和手环）
+	Notify bool     `json:"notify,omitempty"` // 提醒：发通知（Mac 和手环）、点亮手环
 	Read   []string `json:"read,omitempty"`   // 能读哪些目录下的文件（可以用 ~）
-	Exec   bool     `json:"exec,omitempty"`   // 执行命令
+	Exec   []string `json:"exec,omitempty"`   // 能执行哪些命令（命令名，如 "herdr"）
 }
 
 // Empty：什么都没要
-func (p Permissions) Empty() bool { return !p.Notify && !p.Exec && len(p.Read) == 0 }
+func (p Permissions) Empty() bool { return !p.Notify && len(p.Exec) == 0 && len(p.Read) == 0 }
 
 // Key 用来记「用户允许过哪些权限」：权限变了要重新允许
 func (p Permissions) Key() string {
@@ -94,13 +94,13 @@ func (p Permissions) Key() string {
 func (p Permissions) Describe() []string {
 	var out []string
 	if p.Notify {
-		out = append(out, "发通知")
+		out = append(out, "发通知、点亮手环")
 	}
 	for _, r := range p.Read {
 		out = append(out, "读 "+r)
 	}
-	if p.Exec {
-		out = append(out, "执行命令")
+	for _, c := range p.Exec {
+		out = append(out, "运行 "+c)
 	}
 	return out
 }

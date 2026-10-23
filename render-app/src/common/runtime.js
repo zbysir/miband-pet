@@ -10,7 +10,7 @@
 //   vibrate(mode)       short / long
 //   storageGet(key) / storageSet(key, value)   插件自己的持久化数据（同步）
 //   call(name, args)    让 Mac 做事（Mac 上注册的功能，如 feed）；不等结果，Mac 会更新对应的数据
-//   scope               插件名 + ':'；useStore(name) 先读本插件 mac.js publish 的（scope + name），没有再读全局的
+//   scope               插件名 + ':'；useStore(name) 读本插件 mac.js publish 的（scope + name）
 //
 // 返回：{ api, mount(component), setStore(name, value), dispatch(id, type), swipe(dir) }
 // api 就是插件里 import ... from 'miband' 拿到的东西。
@@ -169,11 +169,12 @@ module.exports = function createRuntime(host) {
     }, [ms])
   }
 
-  // Mac 推过来的数据：agents、settings 等，变了会重新渲染。本插件 mac.js publish 的优先；
-  // 别的插件 publish 的用「插件名:数据名」读
+  // Mac 推过来的数据，变了会重新渲染。只能读本插件 mac.js publish 的和基座给的（BASE_STORES），
+  // 插件之间不共用数据
+  const BASE_STORES = ['screen', 'band']
   function useStore(name) {
-    const own = host.scope ? stores[host.scope + name] : undefined
-    return own !== undefined ? own : stores[name]
+    if (BASE_STORES.indexOf(name) >= 0 || !host.scope) return stores[name]
+    return stores[host.scope + name]
   }
 
   function useSwipe(fn) {

@@ -158,7 +158,7 @@ function InstallApps({state, bundled, onNext}: { state: AppState, bundled: Bundl
         <>
             <Pet mood="work" size={112} skin={state.settings?.pet}/>
             <Title>在手环上装上 wristkit</Title>
-            <Muted>手环上会多出一个应用「wristkit」，Agent 猫、Agents 列表这些都是它里面的插件。</Muted>
+            <Muted>手环上会多出一个应用「wristkit」，Agent 猫这些都是它里面的插件。</Muted>
             {bundled.map(b => (
                 <div key={b.package} className="flex w-full items-center justify-between rounded-lg border px-4 py-3 text-sm">
                     <span>{b.name}</span>

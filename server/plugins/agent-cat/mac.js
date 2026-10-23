@@ -1,11 +1,12 @@
-// Agent 猫的 Mac 端：读 Claude Code 和 Codex 的额度，推给手环（本插件里 useStore('usage')，
-// 别的插件用 useStore('agent-cat:usage')）。读不到的不推，界面上也就不显示。
+// Agent 猫的 Mac 端。agent 状态、每日统计、提醒在 herdr.js；这里读 Claude Code 和 Codex 的额度，
+// 推给手环（useStore('usage')）。读不到的不推，界面上也就不显示。
 //
 //   - Claude Code：只把额度传给状态栏命令。App 里打开「显示 Claude Code 额度」后，状态栏脚本会把数据存到
 //     ~/Library/Application Support/miband-pet/claude-status.json（server/internal/usage/statusline.go），这里读它。
 //     只有 Pro/Max 订阅才有。
 //   - Codex：会话日志 ~/.codex/sessions/年/月/日/rollout-*.jsonl 里的 token_count 记录自带额度，读最近的一条。
 import { publish, on, readFile, readDir, stat, home } from 'miband/mac'
+import './herdr'
 
 const CLAUDE = home + '/Library/Application Support/miband-pet/claude-status.json'
 const CODEX = home + '/.codex/sessions'

@@ -8,54 +8,68 @@ import (
 	"path/filepath"
 )
 
-// Config 是 config.json：{"auth_key": "0x…", "address": "AA:BB:CC:DD:EE:FF", "notify": true, "notify_start": true, "alert": "auto"}
+// Config 是 config.json：{"auth_key": "0x…", "address": "AA:BB:CC:DD:EE:FF", "pet": "orange"}
 type Config struct {
 	AuthKey string `json:"auth_key"`
 	Address string `json:"address"`
-	// 是否提醒（默认开）；关掉后快应用里的数据照常更新
-	Notify *bool `json:"notify,omitempty"`
-	// agent 开始跑时也提醒（默认开）
-	NotifyStart *bool `json:"notify_start,omitempty"`
-	// 提醒方式：auto（默认：手环上快应用在前台就只亮屏，否则发通知）/ wake（总是只亮屏）/ notify（总是发通知，会震动）/ both
-	Alert string `json:"alert,omitempty"`
-	// 宠物：orange（橘猫，默认）/ gray（灰猫，中华田园猫）/ white（白猫，美短）
+	// 菜单栏的猫：orange（橘猫，默认）/ gray（灰猫，中华田园猫）/ white（白猫，美短）。手环上的猫是 Agent 猫插件自己的配置
 	Pet string `json:"pet,omitempty"`
-	// 有 agent 等你回答时保持亮屏（默认关）：每隔 KeepAwakeSec 秒（默认 50）把快应用打开一次。
-	// 手环亮屏最长 60 秒，所以间隔要比手环上设的亮屏时间短
-	KeepAwake    bool `json:"keep_awake,omitempty"`
-	KeepAwakeSec int  `json:"keep_awake_sec,omitempty"`
-	// agent 卡住超过几分钟猫就着急，并再提醒一次（默认 5，0 表示关）
-	ImpatientMin *int `json:"impatient_min,omitempty"`
 	// 用户允许过的插件权限：插件名 → 当时的权限（plugin.Permissions.Key()），权限变了要重新允许
 	PluginGrants map[string]string `json:"plugin_grants,omitempty"`
 	// 用户在 App 里改过的插件配置：插件名 → 配置项 → 值（插件在 manifest.json 的 settings 里声明有哪些）
 	PluginConfig map[string]map[string]any `json:"plugin_config,omitempty"`
+
+	// 以下是旧版的提醒设置，现在是 Agent 猫插件的配置；读到了就搬过去（MigrateLegacy），不再写回
+	Notify       *bool  `json:"notify,omitempty"`
+	NotifyStart  *bool  `json:"notify_start,omitempty"`
+	Alert        string `json:"alert,omitempty"`
+	KeepAwake    bool   `json:"keep_awake,omitempty"`
+	KeepAwakeSec int    `json:"keep_awake_sec,omitempty"`
+	ImpatientMin *int   `json:"impatient_min,omitempty"`
 }
 
-func (c Config) ImpatientMinutes() int {
-	if c.ImpatientMin == nil {
-		return 5
+// MigrateLegacy 把旧版的提醒设置搬进 Agent 猫插件的配置（插件里已经改过的不覆盖），返回有没有改动。
+func (c *Config) MigrateLegacy() bool {
+	old := map[string]any{}
+	switch {
+	case c.Notify != nil && !*c.Notify:
+		old["alert"] = "off"
+	case c.Alert == "wake":
+		old["alert"] = "wake"
+	case c.Alert != "": // notify / both / auto：都会震动提醒，归到发通知
+		old["alert"] = "notify"
 	}
-	return max(*c.ImpatientMin, 0)
-}
-
-func (c Config) NotifyOn() bool      { return c.Notify == nil || *c.Notify }
-func (c Config) NotifyStartOn() bool { return c.NotifyStart == nil || *c.NotifyStart }
-
-func (c Config) AlertMode() string {
-	switch c.Alert {
-	case "wake", "notify", "both":
-		return c.Alert
+	if c.NotifyStart != nil {
+		old["notifyStart"] = *c.NotifyStart
 	}
-	return "auto"
-}
-
-// KeepAwakeSecs 保持亮屏的间隔（秒），限制在 5~60，默认 50。
-func (c Config) KeepAwakeSecs() int {
-	if c.KeepAwakeSec <= 0 {
-		return 50
+	if c.KeepAwake {
+		old["keepAwake"] = true
 	}
-	return min(max(c.KeepAwakeSec, 5), 60)
+	// 数字用 float64，和从 config.json 读出来的一样（插件配置的校验只认这个）
+	if c.KeepAwakeSec > 0 {
+		old["keepAwakeSec"] = float64(c.KeepAwakeSec)
+	}
+	if c.ImpatientMin != nil {
+		old["impatientMin"] = float64(*c.ImpatientMin)
+	}
+	c.Notify, c.NotifyStart, c.Alert, c.KeepAwake, c.KeepAwakeSec, c.ImpatientMin = nil, nil, "", false, 0, nil
+	if len(old) == 0 {
+		return false
+	}
+	if c.PluginConfig == nil {
+		c.PluginConfig = map[string]map[string]any{}
+	}
+	cat := c.PluginConfig["agent-cat"]
+	if cat == nil {
+		cat = map[string]any{}
+		c.PluginConfig["agent-cat"] = cat
+	}
+	for k, v := range old {
+		if _, ok := cat[k]; !ok {
+			cat[k] = v
+		}
+	}
+	return true
 }
 
 var Pets = []string{"orange", "gray", "white"}

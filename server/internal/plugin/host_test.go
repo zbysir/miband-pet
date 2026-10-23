@@ -217,8 +217,8 @@ func agentList(statuses ...string) []map[string]any {
 
 func TestAgentCat(t *testing.T) {
 	b := builtinBand(t, "agent-cat")
-	b.setStore("settings", map[string]any{"pet": "gray"})
-	b.setStore("agents", agentList("working", "idle"))
+	b.setStore("agent-cat:config", map[string]any{"skin": "gray"})
+	b.setStore("agent-cat:agents", agentList("working", "idle"))
 	tree := b.waitTree(func(m map[string]any) bool { return hasText(m, "1 个在忙") })
 	sprite := find(tree, func(n map[string]any) bool { return n["t"] == "a" })
 	if sprite == nil {
@@ -231,11 +231,11 @@ func TestAgentCat(t *testing.T) {
 	t.Logf("猫页面的树 %d 字节", len(raw))
 
 	// 跑完一个 → 庆祝
-	b.setStore("agents", agentList("done", "idle"))
+	b.setStore("agent-cat:agents", agentList("done", "idle"))
 	b.waitTree(func(m map[string]any) bool { return hasText(m, "搞定一个！") })
 
 	// 卡住 → 举牌；点气泡在手环本地换下一个
-	b.setStore("agents", agentList("blocked", "working"))
+	b.setStore("agent-cat:agents", agentList("blocked", "working"))
 	tree = b.waitTree(func(m map[string]any) bool { return hasText(m, "1 个等你处理！") && hasText(m, "1/2") })
 	bubble := find(tree, func(n map[string]any) bool {
 		return n["e"] != nil && strings.Contains(n["s"].(string), "background-color:#16191f")
@@ -252,15 +252,15 @@ func TestAgentCat(t *testing.T) {
 
 func TestAgentCatFishAndImpatient(t *testing.T) {
 	b := builtinBand(t, "agent-cat")
-	b.setStore("settings", map[string]any{"pet": "orange", "impatientMin": 5})
-	b.setStore("stats", map[string]any{"today": map[string]any{"done": 7}, "days": []any{}})
+	b.setStore("agent-cat:config", map[string]any{"impatientMin": 5})
+	b.setStore("agent-cat:stats", map[string]any{"today": map[string]any{"done": 7}, "days": []any{}})
 	b.setStore("agent-cat:usage", []map[string]any{
 		{"agent": "codex", "windows": []map[string]any{{"name": "7d", "used": 20, "resetsAt": 0}}},
 		{"agent": "claude", "windows": []map[string]any{{"name": "5h", "used": 63.4, "resetsAt": 0}}},
 	})
 	// 卡了 7 分钟：着急
 	since := time.Now().Add(-7 * time.Minute).UnixMilli()
-	b.setStore("agents", []map[string]any{{"id": "p1", "agent": "claude", "project": "api", "title": "修登录", "status": "blocked", "since": since}})
+	b.setStore("agent-cat:agents", []map[string]any{{"id": "p1", "agent": "claude", "project": "api", "title": "修登录", "status": "blocked", "since": since}})
 	tree := b.waitTree(func(m map[string]any) bool { return hasText(m, "api 等了 7 分钟！") })
 	if !hasText(tree, "Claude 5h|63%") {
 		t.Fatalf("默认显示用得最多的额度：%v", texts(tree))
@@ -305,7 +305,7 @@ func TestToday(t *testing.T) {
 	for i, d := range []int{3, 0, 5, 8, 1, 0, 12} {
 		days = append(days, map[string]any{"date": fmt.Sprintf("10-%02d", 16+i), "weekday": "一二三四五六日"[i*3 : i*3+3], "done": d})
 	}
-	b.setStore("stats", map[string]any{"today": map[string]any{"done": 12}, "days": days})
+	b.setStore("agent-cat:stats", map[string]any{"today": map[string]any{"done": 12}, "days": days})
 	b.setStore("agent-cat:usage", []map[string]any{{"agent": "claude", "windows": []map[string]any{{"name": "5h", "used": 85, "resetsAt": 0}}}})
 	root := b.waitTree(func(m map[string]any) bool { return hasText(m, "都在休息") })
 	if root["t"] != "w" || root["vt"] != true {
@@ -332,7 +332,7 @@ func TestAgentCatStableOrder(t *testing.T) {
 	for i := range 5 {
 		list = append(list, map[string]any{"id": fmt.Sprintf("p%d", i), "agent": "claude", "project": "proj", "title": fmt.Sprintf("任务%d", i), "status": "idle"})
 	}
-	b.setStore("agents", list)
+	b.setStore("agent-cat:agents", list)
 	tree := b.waitTree(func(m map[string]any) bool { return hasText(m, "1/5") && hasText(m, "任务0") })
 	bubble := find(tree, func(n map[string]any) bool {
 		return n["e"] != nil && strings.Contains(n["s"].(string), "background-color:#16191f")
@@ -347,7 +347,7 @@ func TestAgentCatStableOrder(t *testing.T) {
 	b.mu.Lock()
 	n := len(b.trees)
 	b.mu.Unlock()
-	b.setStore("agents", rev)
+	b.setStore("agent-cat:agents", rev)
 	time.Sleep(200 * time.Millisecond)
 	b.mu.Lock()
 	last := b.trees[len(b.trees)-1]
@@ -358,19 +358,23 @@ func TestAgentCatStableOrder(t *testing.T) {
 	}
 }
 
-func TestAgentsPaging(t *testing.T) {
-	b := builtinBand(t, "agents")
-	var list []map[string]any
-	for i := range 10 {
-		list = append(list, map[string]any{"id": string(rune('a' + i)), "agent": "claude", "project": "proj" + string(rune('a'+i)), "title": "t", "status": "idle"})
-	}
-	b.setStore("agents", list)
-	b.waitTree(func(m map[string]any) bool { return hasText(m, "1/3") && hasText(m, "proja") })
-	b.call("swipe", "up")
-	tree := b.waitTree(func(m map[string]any) bool { return hasText(m, "2/3") })
-	if !hasText(tree, "proje") || hasText(tree, "proja") {
-		t.Fatalf("第二页内容不对：%v", texts(tree))
-	}
+// 手环上的插件只能读自己的数据和基座给的（screen、band），读不到别的插件推的
+func TestStoreIsolation(t *testing.T) {
+	b := sourceBand(t, fstest.MapFS{
+		"manifest.json": {Data: []byte(`{"name": "spy"}`)},
+		"index.jsx": {Data: []byte(`import { Text, useStore } from 'miband'
+export default function () {
+  const band = useStore('band') || {}
+  return <Text>{['own=' + useStore('mine'), 'other=' + useStore('agent-cat:agents'), 'global=' + useStore('agents'), 'band=' + band.connected].join(' ')}</Text>
+}`)},
+	})
+	b.setStore("spy:mine", 1)
+	b.setStore("agent-cat:agents", 2)
+	b.setStore("agents", 3)
+	b.setStore("band", map[string]any{"connected": true})
+	b.waitTree(func(m map[string]any) bool {
+		return hasText(m, "own=1 other=undefined global=undefined band=true")
+	})
 }
 
 func TestStyles(t *testing.T) {
@@ -470,8 +474,9 @@ func startHost(t *testing.T, builtin fs.FS, userDir string) (*Host, *fakeBand) {
 }
 
 func TestProtocol(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // 没有 herdr
 	h, f := startHost(t, plugins.FS, "")
-	h.SetStore("agents", agentList("working"))
+	h.SetStore("band", map[string]any{"connected": true})
 	time.Sleep(50 * time.Millisecond)
 	if len(f.all("plugins")) != 0 {
 		t.Fatal("渲染器不在前台时不该发")
@@ -483,7 +488,7 @@ func TestProtocol(t *testing.T) {
 	for _, p := range list {
 		names = append(names, p.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "agent-cat,agents" {
+	if strings.Join(names, ",") != "agent-cat" {
 		t.Fatalf("插件列表不对：%v", names)
 	}
 	cat := list[0].(map[string]any)
@@ -492,7 +497,7 @@ func TestProtocol(t *testing.T) {
 	}
 	raw, _ := json.Marshal(idx)
 	t.Logf("插件列表 %d 字节", len(raw))
-	f.wait(t, func(m map[string]any) bool { return m["t"] == "store" && m["name"] == "agents" })
+	f.wait(t, func(m map[string]any) bool { return m["t"] == "store" && m["name"] == "band" })
 
 	// 手环要代码：分片发过来，拼起来是编译好的 JS
 	code := cat["code"].(string)
@@ -522,11 +527,11 @@ func TestProtocol(t *testing.T) {
 
 	// 数据没变不重发；变了才发
 	n := len(f.all("store"))
-	h.SetStore("agents", agentList("working"))
-	h.SetStore("agents", agentList("done"))
+	h.SetStore("band", map[string]any{"connected": true})
+	h.SetStore("band", map[string]any{"connected": false})
 	f.wait(t, func(m map[string]any) bool { return len(f.all("store")) == n+1 })
 
-	h.ShowFirst()
+	h.Show("agent-cat")
 	f.wait(t, func(m map[string]any) bool { return m["t"] == "show" && m["name"] == "agent-cat" })
 }
 
@@ -593,22 +598,23 @@ func TestMacJS(t *testing.T) {
 		"mac.js": `import { on, publish, getStore, onStore, storage } from 'miband/mac'
 on('ping', (n) => {
   storage.set('count', (storage.get('count') || 0) + 1)
-  publish('pong', { n: n * 2, count: storage.get('count'), agents: (getStore('agents') || []).length })
+  publish('pong', { n: n * 2, count: storage.get('count'), band: getStore('band').connected, other: getStore('other:secret') === undefined })
 })
-onStore('agents', (list) => publish('seen', list.length))`,
+onStore('band', (band) => publish('seen', band.foreground))`,
 	})
 	h, f := startHost(t, nil, dir)
 	h.DataDir = t.TempDir()
-	h.SetStore("agents", agentList("working", "idle"))
+	h.SetStore("band", map[string]any{"connected": true, "foreground": false})
+	h.SetStore("other:secret", "别的插件的数据")
 	h.HandleMessage(map[string]any{"t": "hello", "have": []any{}})
 	// 手环上的插件 call('ping', 21)
 	h.HandleMessage(map[string]any{"t": "call", "p": "hello", "name": "ping", "args": []any{21.0}})
 	m := f.wait(t, func(m map[string]any) bool { return m["t"] == "store" && m["name"] == "hello:pong" })
-	if v := m["v"].(map[string]any); v["n"] != 42.0 || v["count"] != 1.0 || v["agents"] != 2.0 {
+	if v := m["v"].(map[string]any); v["n"] != 42.0 || v["count"] != 1.0 || v["band"] != true || v["other"] != true {
 		t.Fatalf("pong 不对：%v", v)
 	}
-	h.SetStore("agents", agentList("working", "idle", "done"))
-	f.wait(t, func(m map[string]any) bool { return m["t"] == "store" && m["name"] == "hello:seen" && m["v"] == 3.0 })
+	h.SetStore("band", map[string]any{"connected": true, "foreground": true})
+	f.wait(t, func(m map[string]any) bool { return m["t"] == "store" && m["name"] == "hello:seen" && m["v"] == true })
 	if info := h.Plugins(); info[0].Error != "" || !info[0].HasMac || info[0].NeedGrant {
 		t.Fatalf("状态不对：%+v", info[0])
 	}
@@ -669,6 +675,7 @@ on('run', () => exec('echo', ['hi']))`, filepath.Join(allowedDir, "ok.txt"), sec
 func TestTodayUsage(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("PATH", t.TempDir()) // 没有 herdr
 	writePlugin(t, home, "Library/Application Support/miband-pet", map[string]string{
 		"claude-status.json": `{"rate_limits":{"five_hour":{"used_percentage":63,"resets_at":4000000000},"seven_day":{"used_percentage":41,"resets_at":1000}}}`,
 	})
@@ -695,6 +702,7 @@ func TestTodayUsage(t *testing.T) {
 }
 
 func TestPluginSettings(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // 没有 herdr
 	h, f := startHost(t, plugins.FS, "")
 	h.HandleMessage(map[string]any{"t": "hello", "have": []any{}})
 	// 没改过：推默认值
@@ -716,7 +724,96 @@ func TestPluginSettings(t *testing.T) {
 		return m["t"] == "store" && m["name"] == "agent-cat:config" && v["quota"] == "claude:7d" && v["skin"] == "orange"
 	})
 	info := h.Plugins()[0]
-	if len(info.Settings) != 2 || info.Config["quota"] != "claude:7d" {
+	if len(info.Settings) != 7 || info.Config["quota"] != "claude:7d" || info.Config["alert"] != "notify" {
 		t.Fatalf("界面上的配置不对：%+v %+v", info.Settings, info.Config)
+	}
+}
+
+// Agent 猫在 Mac 上读 herdr：推 agent 状态，数今天完成了几个，跑完、卡住时提醒
+func TestAgentCatHerdr(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// 假的 herdr：输出 agents.json
+	bin, list := t.TempDir(), filepath.Join(t.TempDir(), "agents.json")
+	t.Setenv("PATH", bin)
+	writePlugin(t, bin, "", map[string]string{"herdr": "#!/bin/sh\n/bin/cat " + list + "\n"})
+	_ = os.Chmod(filepath.Join(bin, "herdr"), 0o755)
+	setAgents := func(statuses ...string) {
+		var agents []map[string]any
+		for i, s := range statuses {
+			agents = append(agents, map[string]any{"pane_id": fmt.Sprintf("p%d", i), "agent": "claude", "agent_status": s,
+				"cwd": "/work/api/", "name": "", "terminal_title_stripped": fmt.Sprintf("任务%d", i)})
+		}
+		raw, _ := json.Marshal(map[string]any{"result": map[string]any{"agents": agents}})
+		if err := os.WriteFile(list, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 旧版 App 记的今天完成数，第一次跑时搬过来
+	today := time.Now().Format("2006-01-02")
+	writePlugin(t, home, "Library/Application Support/miband-pet", map[string]string{
+		"stats.json": fmt.Sprintf(`{"days":{%q:{"done":4,"fed":1}},"fishLeft":3}`, today),
+	})
+	setAgents("working", "idle")
+
+	var mu sync.Mutex
+	var notes, wakes []string
+	f := &fakeBand{}
+	h := NewHost()
+	h.Send = f.send
+	h.DataDir = t.TempDir()
+	h.NotifyBand = func(title, body string) error {
+		mu.Lock()
+		notes = append(notes, title+"|"+body)
+		mu.Unlock()
+		return nil
+	}
+	h.Wake = func(plugin string) error {
+		mu.Lock()
+		wakes = append(wakes, plugin)
+		mu.Unlock()
+		return nil
+	}
+	h.Load(plugins.FS, "")
+	ctx, cancel := context.WithCancel(context.Background())
+	go h.Run(ctx)
+	t.Cleanup(cancel)
+	h.HandleMessage(map[string]any{"t": "hello", "have": []any{}})
+	storeIs := func(name, want string) func(m map[string]any) bool {
+		return func(m map[string]any) bool {
+			raw, _ := json.Marshal(m["v"])
+			return m["t"] == "store" && m["name"] == name && strings.Contains(string(raw), want)
+		}
+	}
+	f.wait(t, storeIs("agent-cat:agents", `{"agent":"claude","id":"p0","project":"api","status":"working","title":"任务0"}`))
+	f.wait(t, storeIs("agent-cat:stats", `"today":{"done":4}`))
+
+	// 跑完一个：今天的数 +1，发通知
+	setAgents("done", "idle")
+	f.wait(t, storeIs("agent-cat:stats", `"today":{"done":5}`))
+	waitFor := func(what string, ok func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(8 * time.Second)
+		for time.Now().Before(deadline) {
+			mu.Lock()
+			done := ok()
+			mu.Unlock()
+			if done {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("等不到%s：通知 %v，亮屏 %v", what, notes, wakes)
+	}
+	waitFor("跑完的通知", func() bool { return len(notes) == 1 && notes[0] == "claude 完成|api · 任务0" })
+
+	// 改成只亮屏：卡住时点亮手环、切到猫，不发通知
+	if err := h.SetConfig("agent-cat", "alert", "wake"); err != nil {
+		t.Fatal(err)
+	}
+	setAgents("blocked", "idle")
+	waitFor("亮屏", func() bool { return len(wakes) == 1 && wakes[0] == "agent-cat" && len(notes) == 1 })
+	if e := h.Plugins()[0].Error; e != "" {
+		t.Fatalf("猫插件出错：%s", e)
 	}
 }

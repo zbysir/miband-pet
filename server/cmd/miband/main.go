@@ -1,6 +1,6 @@
-// miband：Mac 直连小米手环（经典蓝牙 SPP），跑插件、把界面推给手环上的渲染器，agent 有变化时提醒。
+// miband：Mac 直连小米手环（经典蓝牙 SPP），跑插件、把界面推给手环上的渲染器。
 //
-//	miband app                 常驻：跑插件（Agent 猫、Agents 列表和用户插件）；agent 开始跑/跑完/卡住时提醒
+//	miband app                 常驻：跑插件（Agent 猫和用户插件；Agent 猫会在 agent 跑完/卡住时提醒）
 //	miband notify 标题 [正文]   发一条通知
 //	miband apps                列出手环上的第三方快应用
 //	miband install <rpk>       安装快应用并打开

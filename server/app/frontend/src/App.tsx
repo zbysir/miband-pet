@@ -1,9 +1,9 @@
 import {useCallback, useEffect, useState} from 'react'
 import type {ReactNode} from 'react'
-import {Bell, FolderOpen, PawPrint, Puzzle, RefreshCw, Watch} from 'lucide-react'
+import {Bell, FolderOpen, Gauge, PawPrint, Puzzle, RefreshCw, Watch} from 'lucide-react'
 import {
     AllowPlugin, BundledApps, CopyBuiltin, GetState, Install, Launch, OpenPluginDir, RevokePlugin, SetClaudeUsage,
-    SetImpatient, SetKeepAwake, SetPet, SetPluginConfig, TestNotify, Uninstall, UpdateSettings,
+    SetPet, SetPluginConfig, TestNotify, Uninstall,
 } from '../wailsjs/go/main/App'
 import {EventsOn} from '../wailsjs/runtime/runtime'
 import {Badge} from '@/components/ui/badge'
@@ -11,14 +11,13 @@ import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
 import {Input} from '@/components/ui/input'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
-import {Separator} from '@/components/ui/separator'
 import {Switch} from '@/components/ui/switch'
 import {ToggleGroup, ToggleGroupItem} from '@/components/ui/toggle-group'
 import {Wizard} from './Wizard'
 import {Preview} from './Preview'
 import {SKINS} from './Pet'
 import type {Skin} from './Pet'
-import type {AlertMode, AppState, BundledApp, PluginInfo, PluginSetting} from './types'
+import type {AppState, BundledApp, PluginInfo, PluginSetting} from './types'
 
 type Run = (label: string, fn: () => Promise<unknown>) => void
 
@@ -82,7 +81,7 @@ export default function App() {
                 <div className="flex flex-col gap-4">
                 {plugin && (plugin.settings?.length ?? 0) > 0 && <PluginSettingsCard plugin={plugin} run={run}/>}
                 <MenubarCard state={state} run={run}/>
-                <AlertCard state={state} run={run}/>
+                <UsageCard state={state} run={run}/>
                 <BandAppsCard state={state} bundled={bundled} run={run}/>
                 <PluginsCard state={state} run={run} onSelect={setSelected}/>
                 <div className="flex gap-2">
@@ -226,55 +225,18 @@ function MenubarCard({state, run}: { state: AppState, run: Run }) {
     )
 }
 
-// ---------- 提醒 ----------
+// ---------- Claude Code 额度：插件读额度要的数据，得由 App 改 Claude Code 的设置才拿得到 ----------
 
-const ALERT_MODES: { value: AlertMode, label: string, desc: string }[] = [
-    {value: 'auto', label: '自动', desc: '手环上正开着 wristkit 时只亮屏，否则发通知震动'},
-    {value: 'wake', label: '只亮屏', desc: '把手环上的 wristkit 打开到前台，亮屏但不震动'},
-    {value: 'notify', label: '只通知', desc: '发通知，手环震动'},
-    {value: 'both', label: '都要', desc: '打开 wristkit 并发通知'},
-]
-
-// 保持亮屏的间隔：手环亮屏最长 60 秒，要比手环上设的亮屏时间短
-const KEEP_AWAKE_SECS = [15, 30, 50]
-
-// 卡住多久算太久（0 表示不管）
-const IMPATIENT_MINS = [0, 3, 5, 10]
-
-function AlertCard({state, run}: { state: AppState, run: Run }) {
+function UsageCard({state, run}: { state: AppState, run: Run }) {
     const s = state.settings
     if (!s) return null
-    const save = (notify: boolean, notifyStart: boolean, alert: AlertMode) => run('保存设置', () => UpdateSettings(notify, notifyStart, alert))
-    const keepAwake = (on: boolean, sec: number) => run('保存设置', () => SetKeepAwake(on, sec))
-    const mode = ALERT_MODES.find(m => m.value === s.alert) ?? ALERT_MODES[0]
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Bell className="size-4"/>提醒</CardTitle>
+                <CardTitle className="flex items-center gap-2"><Gauge className="size-4"/>Claude Code 额度</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-5">
-                <Row title="agent 有变化时提醒"><Switch checked={s.notify} onCheckedChange={v => save(v, s.notifyStart, s.alert)}/></Row>
-                <Row title="开始跑也提醒" hint="关掉后只在跑完、卡住时提醒">
-                    <Switch checked={s.notifyStart} disabled={!s.notify} onCheckedChange={v => save(s.notify, v, s.alert)}/>
-                </Row>
-                <div className="flex flex-col gap-2">
-                    <Row title="怎么提醒" hint={mode.desc}/>
-                    <Choice value={s.alert} disabled={!s.notify} onChange={v => save(s.notify, s.notifyStart, v as AlertMode)}
-                            options={ALERT_MODES.map(m => ({value: m.value, label: m.label}))}/>
-                </div>
-                <Separator/>
-                <Row title="agent 卡住多久算太久"
-                     hint={s.impatientMin > 0 ? `卡住超过 ${s.impatientMin} 分钟，手环上的猫会着急，并再提醒你一次` : '卡多久都不再提醒'}/>
-                <Choice value={String(s.impatientMin)} onChange={v => run('保存设置', () => SetImpatient(Number(v)))}
-                        options={IMPATIENT_MINS.map(m => ({value: String(m), label: m === 0 ? '不管' : `${m} 分钟`}))}/>
-                <Row title="有 agent 等你回答时保持亮屏"
-                     hint={`每隔 ${s.keepAwakeSec} 秒把手环上的 wristkit 打开一次，手环不熄屏。手环上的亮屏时间要比这个长（最长 60 秒）`}>
-                    <Switch checked={s.keepAwake} onCheckedChange={v => keepAwake(v, s.keepAwakeSec)}/>
-                </Row>
-                <Choice value={String(s.keepAwakeSec)} disabled={!s.keepAwake} onChange={v => keepAwake(true, Number(v))}
-                        options={KEEP_AWAKE_SECS.map(sec => ({value: String(sec), label: `每 ${sec} 秒`}))}/>
-                <Separator/>
-                <Row title="显示 Claude Code 额度"
+            <CardContent>
+                <Row title="让插件能显示 Claude Code 额度"
                      hint="Claude Code 只把额度告诉状态栏命令，所以要把它的状态栏换成一个小脚本：先存一份数据，再交给你原来的状态栏命令，显示不变。关掉会原样还原（改之前会备份 ~/.claude/settings.json）。只有 Pro/Max 订阅才有额度；Codex 的额度不用设置。">
                     <Switch checked={s.claudeUsage} onCheckedChange={v => run(v ? '打开额度' : '关掉额度', () => SetClaudeUsage(v))}/>
                 </Row>

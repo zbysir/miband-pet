@@ -19,10 +19,6 @@ SIGN_IDENTITY ?= miband pet local signing
 APP_BUNDLE = server/app/build/bin/wristkit.app
 
 app: quickapps
-	# Mac 窗口里的猫和手环上的 Agent 猫插件用同一套帧
-	rm -rf server/app/frontend/public/pet && mkdir -p server/app/frontend/public/pet
-	cp -R server/plugins/agent-cat/assets/ server/app/frontend/public/pet/
-	mv server/app/frontend/public/pet/fish.png server/app/frontend/public/fish.png
 	# 插件预览用手环上同一份运行时
 	cp render-app/src/common/runtime.js server/app/frontend/public/runtime.js
 	rm -f server/app/rpk/*.rpk

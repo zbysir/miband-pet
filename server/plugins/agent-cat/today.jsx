@@ -1,5 +1,5 @@
 // 猫的第二屏「今日」：今天完成了几个任务（一个任务一条小鱼干），最近 7 天的柱状图，以及所有额度。
-// 小鱼干是 Mac 记的（useStore('stats')），额度是本插件 mac.js 读的（useStore('usage')）。
+// 小鱼干是本插件 herdr.js 记的（useStore('stats')），额度是本插件 mac.js 读的（useStore('usage')）。
 import { View, Text, Image, Row, Col, Spacer, useStore, useScreen, asset } from 'miband'
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
