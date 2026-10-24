@@ -201,9 +201,7 @@ function normalize(n, k) {
   return out
 }
 
-// 样式串 a 变成 b 要改的那几项（'k:v;k:v'）；b 里去掉了 a 的某项、或变的不只是颜色时返回 null（整个重建）。
-// 9 Pro 上往已经画出来的元素上补排版属性（宽高、边距、方向、边框粗细这些）不生效，比如空的占位块变成带内边距的竖排卡片，
-// 里面的东西还是横着挤在一起；只有颜色这类不影响排版的能这样改
+// 样式串 a 变成 b 要改的那几项（'k:v;k:v'）；b 里去掉了 a 的某项、或变的不只是颜色时返回 null（整个重建）。只用在文字上（见 patch）
 // 解析过的样式串记着（按节点 id，只留最近一次），同一个节点下次变的时候旧的不用再解析
 let PARSED = {}
 function parseStyle(id, str) {
@@ -267,8 +265,9 @@ function patch(old, neu) {
   const full = old.fs === undefined ? old.s : old.fs
   if (full !== s) {
     if (REBUILD) {
-      // 9 Pro：只变了颜色的，把变了的几项写进绑定的样式（框架只设这几项，排版属性不动）；排版属性变了或有属性被去掉的，整个重建
-      const delta = styleDelta(old.i, full, s)
+      // 9 Pro：文字只变了颜色的，把变了的几项写进绑定的样式（框架只设这几项，排版属性不动）；排版属性变了或有属性被去掉的，整个重建。
+      // 容器（div）样式一变就重建：只写变了的几项时，div 的样式会被这几项整个顶掉（气泡换边框色后宽高、底色、竖排都没了）
+      const delta = old.t === 'x' ? styleDelta(old.i, full, s) : null
       if (delta === null) return normalize(neu, neu.i + '~' + (++KSEQ))
       old.fs = s
       old.s = delta

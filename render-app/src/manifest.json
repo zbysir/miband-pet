@@ -1,8 +1,8 @@
 {
   "package": "dev.bysir.mibandpet",
   "name": "wristkit",
-  "versionName": "2.0.5",
-  "versionCode": 6,
+  "versionName": "2.0.6",
+  "versionCode": 7,
   "minPlatformVersion": 1200,
   "icon": "/common/logo.png",
   "deviceTypeList": ["watch"],
