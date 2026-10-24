@@ -526,11 +526,20 @@ func TestProtocol(t *testing.T) {
 		}
 	}
 
-	// 数据没变不重发；变了才发
-	n := len(f.all("store"))
+	// 数据没变不重发；变了才发（只数 band 的：插件自己的数据可能这时候推过来）
+	bands := func() int {
+		c := 0
+		for _, m := range f.all("store") {
+			if m["name"] == "band" {
+				c++
+			}
+		}
+		return c
+	}
+	n := bands()
 	h.SetStore("band", map[string]any{"connected": true})
 	h.SetStore("band", map[string]any{"connected": false})
-	f.wait(t, func(m map[string]any) bool { return len(f.all("store")) == n+1 })
+	f.wait(t, func(m map[string]any) bool { return bands() == n+1 })
 
 	h.Show("agent-cat")
 	f.wait(t, func(m map[string]any) bool { return m["t"] == "show" && m["name"] == "agent-cat" })

@@ -79,27 +79,35 @@ module.exports = function createRuntime(host) {
     return out
   }
 
-  // 手环的内联样式不认多值简写（padding:7px 10px 不生效），展开成四个方向
-  function expandBox(m) {
-    ;['padding', 'margin'].forEach((k) => {
-      const v = m[k]
-      if (v === undefined) return
-      const p = String(v).trim().split(/\s+/)
-      if (p.length < 2) return
-      const [top, right = top, bottom = top, left = right] = p
-      delete m[k]
-      // 写在简写后面的单个方向（如 paddingLeft）优先
-      if (m[k + '-top'] === undefined) m[k + '-top'] = top
-      if (m[k + '-right'] === undefined) m[k + '-right'] = right
-      if (m[k + '-bottom'] === undefined) m[k + '-bottom'] = bottom
-      if (m[k + '-left'] === undefined) m[k + '-left'] = left
-    })
-    return m
+  // 样式表 → 'k:v;k:v'（不改动 m）。手环的内联样式不认多值简写（padding:7px 10px 不生效），展开成四个方向，
+  // 接在最后（先 padding 后 margin）；写在简写后面的单个方向（如 paddingLeft）优先
+  const SIDES = ['top', 'right', 'bottom', 'left']
+  function boxSides(m, k, out) {
+    const v = m[k]
+    if (v === undefined) return out
+    const p = String(v).trim().split(/\s+/)
+    if (p.length < 2) return out
+    const vals = [p[0], p[1] === undefined ? p[0] : p[1], p[2] === undefined ? p[0] : p[2], p[3] === undefined ? (p[1] === undefined ? p[0] : p[1]) : p[3]]
+    for (let i = 0; i < 4; i++) {
+      const side = k + '-' + SIDES[i]
+      if (m[side] === undefined) out += (out ? ';' : '') + side + ':' + vals[i]
+    }
+    return out
   }
-
+  function multi(v) {
+    return v !== undefined && /\S\s+\S/.test(String(v))
+  }
   function styleString(m) {
-    m = expandBox(m)
-    return Object.keys(m).map((k) => k + ':' + m[k]).join(';')
+    const pm = multi(m.padding)
+    const mm = multi(m.margin)
+    let s = ''
+    for (const k in m) {
+      if ((pm && k === 'padding') || (mm && k === 'margin')) continue
+      s += (s ? ';' : '') + k + ':' + m[k]
+    }
+    if (pm) s = boxSides(m, 'padding', s)
+    if (mm) s = boxSides(m, 'margin', s)
+    return s
   }
 
   // ---------- 组件实例和 hooks ----------
@@ -124,17 +132,27 @@ module.exports = function createRuntime(host) {
   let rec = null // 正在展开的组件的登记
   const stores = {}
 
+  // 登记表：ids [路径, id, ...]、handlers [id, 处理, ...]、swipes、key（组件自己的路径）、kids（子组件 / 容器的登记表）。
+  // 除了 ids 都是用到时才建（每展开一个容器都要一张，手环上分配对象不便宜）
   function newRec() {
-    return { ids: [], handlers: [], swipes: [], seen: [], kids: [] }
+    return { ids: [], handlers: null, swipes: null, key: null, kids: null }
+  }
+  function addKid(r) {
+    if (rec.kids) rec.kids.push(r)
+    else rec.kids = [r]
   }
 
   // 复用上次的节点时，把它展开时登记的东西再登记一遍
   function replay(r) {
-    for (let i = 0; i < r.ids.length; i += 2) usedIds.set(r.ids[i], r.ids[i + 1])
-    for (let i = 0; i < r.handlers.length; i += 2) handlers[r.handlers[i]] = r.handlers[i + 1]
-    r.swipes.forEach((fn) => swipeHandlers.push(fn))
-    r.seen.forEach((k) => seen.add(k))
-    r.kids.forEach(replay)
+    const ids = r.ids
+    for (let i = 0; i < ids.length; i += 2) usedIds.set(ids[i], ids[i + 1])
+    const hs = r.handlers
+    if (hs) for (let i = 0; i < hs.length; i += 2) handlers[hs[i]] = hs[i + 1]
+    const sw = r.swipes
+    if (sw) for (let i = 0; i < sw.length; i++) swipeHandlers.push(sw[i])
+    if (r.key) seen.add(r.key)
+    const kids = r.kids
+    if (kids) for (let i = 0; i < kids.length; i++) replay(kids[i])
   }
 
   function markDirty(inst) {
@@ -297,6 +315,10 @@ module.exports = function createRuntime(host) {
     return h('view', { style: { flexGrow: 1 } })
   }
 
+  // 只是带默认样式的容器，没有 hooks：展开时直接调用，不当组件登记实例（省掉查实例、比 props、登记的开销）。
+  // 同一个元素只算一次，结果记在元素上：上层组件没重跑时拿到的还是同一个元素对象，展开好的容器能接着用
+  Row.pure = Col.pure = Spacer.pure = true
+
   // ---------- 渲染：元素树 → 节点树 ----------
 
   const TAGS = { view: 'v', text: 'x', image: 'm', sprite: 'a', pager: 'w' }
@@ -346,12 +368,16 @@ module.exports = function createRuntime(host) {
     if (el.type === Fragment) return expand(el.children, path)
     if (typeof el.type === 'function') {
       const key = path + ':' + (el.type.name || 'C')
+      if (el.type.pure) {
+        if (el.out === undefined) el.out = el.type(Object.assign({}, el.props, { children: el.children.length === 1 ? el.children[0] : el.children }))
+        return expand(el.out, key)
+      }
       const props = Object.assign({}, el.props, { children: el.children.length === 1 ? el.children[0] : el.children })
       let inst = instances.get(key)
       if (inst && inst.type === el.type && inst.nodes && !inst.dirty && sameProps(inst.props, props)) {
         if (!inst.below) {
           replay(inst.rec)
-          rec.kids.push(inst.rec)
+          addKid(inst.rec)
           return inst.nodes
         }
         return expandInst(inst, key, false)
@@ -366,6 +392,19 @@ module.exports = function createRuntime(host) {
     }
     const t = TAGS[el.type]
     if (!t) throw new Error('不认识的组件：' + el.type)
+    // 容器：元素和上次是同一个对象（上层组件没重跑，只是把上次返回的元素重新展开）、下面也没有要重算的组件，
+    // 就用上次展开好的节点，把当时登记的东西再登记一遍
+    const box = t === 'v' || t === 'w'
+    if (box) {
+      const hit = hostCache.get(path)
+      if (hit && hit.el === el && !dirtyUnder(path)) {
+        replay(hit.rec)
+        addKid(hit.rec)
+        return hit.nodes
+      }
+    }
+    const parentRec = rec
+    if (box) rec = newRec()
     const p = el.props
     const node = { t, i: idFor(path), sm: {} }
     if (t === 'x') {
@@ -390,10 +429,18 @@ module.exports = function createRuntime(host) {
       node.e = e
       const hd = { click: p.onClick, longpress: p.onLongPress, change: p.onChange }
       handlers[node.i] = hd
-      rec.handlers.push(node.i, hd)
+      if (rec.handlers) rec.handlers.push(node.i, hd)
+      else rec.handlers = [node.i, hd]
     }
-    if (t === 'v' || t === 'w') {
-      node.c = expand(el.children, path)
+    if (box) {
+      try {
+        node.c = expand(el.children, path)
+      } finally {
+        const r = rec
+        rec = parentRec
+        addKid(r)
+        hostCache.set(path, { el, nodes: [node], rec: r })
+      }
       if (p.__gap) {
         const prop = p.__dir === 'row' ? 'margin-left' : 'margin-top'
         node.c.forEach((c, i) => {
@@ -404,12 +451,27 @@ module.exports = function createRuntime(host) {
     return [node]
   }
 
+  // 展开过的容器：路径 → { el: 当时的元素, nodes, rec: 展开时登记的东西 }
+  const hostCache = new Map()
+  let dirtyKeys = [] // 这次渲染要重算的组件（路径）
+  // path 下面有没有要重算的组件
+  function dirtyUnder(path) {
+    for (let i = 0; i < dirtyKeys.length; i++) {
+      const k = dirtyKeys[i]
+      if (k.length > path.length && k.indexOf(path) === 0) {
+        const c = k[path.length]
+        if (c === '.' || c === ':') return true
+      }
+    }
+    return false
+  }
+
   // 展开一个组件实例：run 时调组件函数，否则用它上次返回的元素
   function expandInst(inst, key, run) {
     const parentRec = rec
     const prevOwner = owner
     rec = newRec()
-    rec.seen.push(key)
+    rec.key = key
     seen.add(key)
     if (run) {
       const prev = current
@@ -440,23 +502,55 @@ module.exports = function createRuntime(host) {
     inst.nodes = nodes
     inst.dirty = false
     inst.below = false
-    parentRec.kids.push(rec)
+    const r = rec
     rec = parentRec
+    addKid(r)
     return nodes
   }
 
-  // 节点 → 交给页面的样子。复用的节点上次算过，直接用（页面也靠同一个对象认出没变的部分）
+  // 节点 → 交给页面的样子。复用的节点上次算过，直接用（页面也靠同一个对象认出没变的部分）。
+  // 重算出来的节点也和上次同一个 id 的比：样式没变就不再拼样式串；整个都没变（子节点也是上次那些对象）就交出上次的对象，
+  // 页面整棵子树跳过不比。组件重算时大部分节点其实没变，这样省下大半
+  const finCache = new Map() // id → { fin: 上次交出的对象, sm: 它的样式表（展开简写之前的） }
+  function sameMap(a, b) {
+    let n = 0
+    for (const k in a) {
+      if (a[k] !== b[k]) return false
+      n++
+    }
+    for (const k in b) n--
+    return n === 0
+  }
+  function sameFrames(a, b) {
+    if (a === b) return true
+    if (!a || !b || a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) if (a[i].src !== b[i].src) return false
+    return true
+  }
   function finish(node) {
     if (node.fin) return node.fin
-    const out = { t: node.t, i: node.i, s: styleString(node.sm) }
+    const kids = node.c ? node.c.map(finish) : undefined
+    const prev = finCache.get(node.i)
+    const p = prev && prev.fin.t === node.t ? prev.fin : null
+    const same = p && sameMap(prev.sm, node.sm)
+    let out = { t: node.t, i: node.i, s: same ? p.s : styleString(node.sm) }
     if (node.x !== undefined) out.x = node.x
     if (node.u !== undefined) out.u = node.u
-    if (node.f !== undefined) out.f = node.f
+    if (node.f !== undefined) out.f = p && sameFrames(p.f, node.f) ? p.f : node.f
     if (node.d !== undefined) out.d = node.d
     if (node.vt !== undefined) out.vt = node.vt
     if (node.ix !== undefined) out.ix = node.ix
     if (node.e) out.e = node.e
-    if (node.c) out.c = node.c.map(finish)
+    if (kids) out.c = kids
+    if (same && out.x === p.x && out.u === p.u && out.f === p.f && out.d === p.d && out.vt === p.vt && out.ix === p.ix && out.e === p.e) {
+      let k = !kids && !p.c
+      if (kids && p.c && kids.length === p.c.length) {
+        k = true
+        for (let i = 0; k && i < kids.length; i++) k = kids[i] === p.c[i]
+      }
+      if (k) out = p
+    }
+    finCache.set(node.i, { fin: out, sm: node.sm })
     node.fin = out
     return out
   }
@@ -479,6 +573,10 @@ module.exports = function createRuntime(host) {
     compMs = 0
     rec = newRec()
     owner = null
+    dirtyKeys = []
+    instances.forEach((inst, k) => {
+      if (inst.dirty) dirtyKeys.push(k)
+    })
     const t0 = Date.now()
     let nodes
     try {
@@ -486,6 +584,7 @@ module.exports = function createRuntime(host) {
     } catch (e) {
       // 出错的那次展开到一半，组件记的节点不完整：下次都重跑
       instances.forEach((inst) => (inst.nodes = null))
+      hostCache.clear()
       host.error('渲染出错：' + errText(e))
       return
     }
@@ -500,6 +599,14 @@ module.exports = function createRuntime(host) {
     let tree = null
     if (nodes.length === 1 && (nodes[0].t === 'v' || nodes[0].t === 'w')) tree = finish(nodes[0])
     else if (nodes.length > 0) tree = finish({ t: 'v', i: 'root', sm: { 'flex-direction': 'column' }, c: nodes })
+    // 这次没用到的 id 不再留着
+    const live = new Set(ids.values())
+    finCache.forEach((v, id) => {
+      if (!live.has(id)) finCache.delete(id)
+    })
+    hostCache.forEach((v, path) => {
+      if (!live.has(v.nodes[0].i)) hostCache.delete(path)
+    })
     host.render(tree, { at: t0, comp: compMs, build: t1 - t0 - compMs, style: Date.now() - t1 })
     const run = effects
     effects = []

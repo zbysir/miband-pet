@@ -201,22 +201,40 @@ function normalize(n, k) {
   return out
 }
 
-// 样式串 a 变成 b 要改的那几项（'k:v;k:v'）；b 里去掉了 a 的某项时返回 null
-function styleDelta(a, b) {
-  const parse = (str) => {
-    const m = {}
-    str.split(';').forEach((part) => {
-      const i = part.indexOf(':')
-      if (i > 0) m[part.slice(0, i)] = part.slice(i + 1)
-    })
-    return m
+// 样式串 a 变成 b 要改的那几项（'k:v;k:v'）；b 里去掉了 a 的某项时返回 null。
+// 解析过的样式串记着（按节点 id，只留最近一次），同一个节点下次变的时候旧的不用再解析
+let PARSED = {}
+function parseStyle(id, str) {
+  const hit = PARSED[id]
+  if (hit && hit.s === str) return hit.m
+  const m = {}
+  const parts = str.split(';')
+  for (let i = 0; i < parts.length; i++) {
+    const j = parts[i].indexOf(':')
+    if (j > 0) m[parts[i].slice(0, j)] = parts[i].slice(j + 1)
   }
-  const ma = parse(a)
-  const mb = parse(b)
+  PARSED[id] = { s: str, m }
+  return m
+}
+function styleDelta(id, a, b) {
+  const ma = parseStyle(id, a)
+  const mb = parseStyle(id, b)
   for (const k in ma) if (!(k in mb)) return null
   const out = []
   for (const k in mb) if (ma[k] !== mb[k]) out.push(k + ':' + mb[k])
   return out.join(';')
+}
+
+// 页面树上 id 对应的节点（从 root 往下读）
+function findNode(n, id) {
+  if (!n) return null
+  if (n.i === id) return n
+  const c = n.c
+  for (let i = 0; i < c.length; i++) {
+    const r = findNode(c[i].w[0], id)
+    if (r) return r
+  }
+  return null
 }
 
 // 子节点放在槽里，重建节点时只换槽里的 w（见 tools/gen_template.py 的 level）
@@ -243,7 +261,7 @@ function patch(old, neu) {
   if (full !== s) {
     if (REBUILD) {
       // 9 Pro：只把变了的几项写进绑定的样式（框架只设这几项，排版属性不动）；有属性被去掉的没法这样表达，整个重建
-      const delta = styleDelta(full, s)
+      const delta = styleDelta(old.i, full, s)
       if (delta === null) return normalize(neu, neu.i + '~' + (++KSEQ))
       old.fs = s
       old.s = delta
@@ -590,9 +608,13 @@ export default {
     const t0 = Date.now()
     const same = this.root && this.root.i === tree.i && this.root.t === tree.t
     NEWN = 0
+    if (!same) {
+      // 整页新建：先清掉旧页面的节点表，再建（normalize 会登记新节点）
+      NODES = {}
+      PARSED = {}
+    }
     const root = same ? patch(this.root, tree) : normalize(tree)
     if (root !== this.root) {
-      if (!same) NODES = {}
       this.root = root
       this.pagerAt = {} // 新建的 swiper 从第 0 页开始
     }
@@ -704,17 +726,21 @@ export default {
   startSprites(sprites) {
     Object.keys(this.anims).forEach((id) => {
       const a = this.anims[id]
-      if (!sprites[id] || sprites[id].sig !== a.sig || NODES[id] !== a.node) this.stopSprite(id)
+      if (!sprites[id] || sprites[id].sig !== a.sig || NODES[id] !== a.raw) this.stopSprite(id)
     })
     Object.keys(sprites).forEach((id) => {
       if (!this.anims[id]) this.startSprite(id, sprites[id])
     })
   },
 
+  // 要改的节点从 this.root 往下按 id 找（读一遍页面数据），不直接用 NODES 里记的：实测直接改 NODES 里的对象
+  // 界面不会变，虽然两者是同一个对象，大概是框架在从页面数据读到对象时才给它装上监听。
+  // NODES[id] 只用来发现这段节点重建过（raw）
   startSprite(id, sp) {
-    const node = NODES[id]
+    const raw = NODES[id]
+    const node = raw && findNode(this.root, id)
     if (!node) return
-    const a = { sig: sp.sig, node, timer: 0 }
+    const a = { sig: sp.sig, raw, timer: 0 }
     this.anims[id] = a
     if (sp.frames.length === 0) return
     node.u = sp.frames[0]
