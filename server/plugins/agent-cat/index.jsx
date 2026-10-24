@@ -153,7 +153,7 @@ function CatPage({ openToday }) {
   const screen = useScreen()
   const celebrating = useCelebrate(agents)
   const impatient = useImpatient(agents, config.impatientMin ?? 5)
-  const [focusId, setFocusId] = useState('')
+  const nextRef = useRef(null) // 气泡组件放进来的「换下一个」，点猫时调用
 
   const n = countBy(agents)
   let mood = 'sleep'
@@ -180,11 +180,6 @@ function CatPage({ openToday }) {
     .sort((x, y) => (PRIORITY[x.status] ?? 4) - (PRIORITY[y.status] ?? 4) || (y.seq || 0) - (x.seq || 0) || byProjectThenId(x, y))
   const top = sorted.filter((a) => a.status !== 'idle' && a.status !== 'unknown')
   const pool = top.length > 0 ? top : sorted
-  const index = Math.max(0, pool.findIndex((a) => a.id === focusId))
-  const focus = pool[index]
-  const next = () => {
-    if (pool.length > 1) setFocusId(pool[(index + 1) % pool.length].id)
-  }
 
   const quota = tightest(usage, config.quota || 'auto')
 
@@ -194,28 +189,11 @@ function CatPage({ openToday }) {
         {headline}
       </Text>
       <QuotaBar quota={quota} />
-      <View style={{ width: 192, height: 142, marginTop: 2, justifyContent: 'center', alignItems: 'center' }} onClick={next}>
+      <View style={{ width: 192, height: 142, marginTop: 2, justifyContent: 'center', alignItems: 'center' }} onClick={() => nextRef.current && nextRef.current()}>
         {/* 换状态时只换帧（帧变了从第一帧播），不换 key 重建 */}
         <Sprite frames={frames(skin, action)} duration={duration} style={{ width: 140, height: 140 }} />
       </View>
-      {focus ? (
-        // 状态色画成一整圈描边（手环和 App 里的预览画出来一样）
-        <View
-          onClick={next}
-          style={{
-            width: 192, height: 62, marginTop: 6, padding: [6, 10], borderRadius: 14, backgroundColor: '#16191f',
-            flexDirection: 'column', borderWidth: 2, borderColor: COLOR[focus.status] || COLOR.unknown
-          }}
-        >
-          <Row align="center">
-            <Text style={{ flex: 1, fontSize: 14, fontWeight: 'bold', lines: 1, textOverflow: 'ellipsis' }}>{focus.project || focus.agent || '?'}</Text>
-            {pool.length > 1 && <Text style={{ marginLeft: 6, fontSize: 11, color: '#8a8f98' }}>{`${index + 1}/${pool.length}`}</Text>}
-          </Row>
-          <Text style={{ fontSize: 12, color: '#8a8f98', lines: 1, textOverflow: 'ellipsis' }}>{focus.title || ''}</Text>
-        </View>
-      ) : (
-        <View style={{ height: 62, marginTop: 6 }} />
-      )}
+      <Bubble pool={pool} nextRef={nextRef} />
       <Row align="center" style={{ width: 192, height: 22, marginTop: 8 }}>
         {['blocked', 'working', 'done', 'idle'].map((s) =>
           s === 'blocked' && n.blocked === 0 ? null : (
@@ -228,6 +206,34 @@ function CatPage({ openToday }) {
         <Spacer />
         <Tally openToday={openToday} />
       </Row>
+    </View>
+  )
+}
+
+// 气泡：显示 pool 里的一个 agent，点它（或点猫）换下一个。看哪个的状态放在这里：点的时候只重算气泡，不用把整个猫页重算一遍
+function Bubble({ pool, nextRef }) {
+  const [focusId, setFocusId] = useState('')
+  const index = Math.max(0, pool.findIndex((a) => a.id === focusId))
+  const focus = pool[index]
+  const next = () => {
+    if (pool.length > 1) setFocusId(pool[(index + 1) % pool.length].id)
+  }
+  nextRef.current = next
+  if (!focus) return <View style={{ height: 62, marginTop: 6 }} />
+  // 状态色画成一整圈描边（手环和 App 里的预览画出来一样）
+  return (
+    <View
+      onClick={next}
+      style={{
+        width: 192, height: 62, marginTop: 6, padding: [6, 10], borderRadius: 14, backgroundColor: '#16191f',
+        flexDirection: 'column', borderWidth: 2, borderColor: COLOR[focus.status] || COLOR.unknown
+      }}
+    >
+      <Row align="center">
+        <Text style={{ flex: 1, fontSize: 14, fontWeight: 'bold', lines: 1, textOverflow: 'ellipsis' }}>{focus.project || focus.agent || '?'}</Text>
+        {pool.length > 1 && <Text style={{ marginLeft: 6, fontSize: 11, color: '#8a8f98' }}>{`${index + 1}/${pool.length}`}</Text>}
+      </Row>
+      <Text style={{ fontSize: 12, color: '#8a8f98', lines: 1, textOverflow: 'ellipsis' }}>{focus.title || ''}</Text>
     </View>
   )
 }
