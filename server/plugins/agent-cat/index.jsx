@@ -12,8 +12,9 @@ const PRIORITY = { blocked: 0, done: 1, working: 2, idle: 3, unknown: 4 }
 const COLOR = { blocked: '#ff9f1c', working: '#2ea0ff', done: '#3ddc84', idle: '#5c6068', unknown: '#5c6068' }
 const HEAD_COLOR = { alert: '#ff9f1c', impatient: '#ff5c5c', work: '#2ea0ff', celebrate: '#3ddc84', sleep: '#c9ced8' }
 // 每种动作的帧数和一轮的时长（帧由 tools/gen_pet.py 生成）；着急时举牌摇得更快
-const FRAMES = { work: [6, 900], alert: [6, 700], celebrate: [6, 800], sleep: [8, 2400] }
-const ACTION = { alert: ['alert', 700], impatient: ['alert', 300], work: ['work', 900], celebrate: ['celebrate', 800], sleep: ['sleep', 2400] }
+// 每帧停 400～1200ms（着急时 200ms）：手环上动画是定时换图片播的，换得越勤越费电
+const FRAMES = { work: [6, 3600], alert: [6, 2800], celebrate: [6, 3200], sleep: [8, 9600] }
+const ACTION = { alert: ['alert', 2800], impatient: ['alert', 1200], work: ['work', 3600], celebrate: ['celebrate', 3200], sleep: ['sleep', 9600] }
 const CELEBRATE_MS = 8000
 const COST_COLOR = '#6fb6ff'
 
@@ -138,15 +139,13 @@ export default function AgentCat() {
   return (
     <Pager vertical index={page} onChange={setPage} style={size}>
       <CatPage key="cat" openToday={() => setPage(1)} />
-      {todayReady || page === 1 ? <Today key="today" /> : <View key="today" style={size} />}
+      <Today key="today" ready={todayReady || page === 1} />
     </Pager>
   )
 }
 
 function CatPage({ openToday }) {
   const agents = useStore('agents') || []
-  const stats = useStore('stats') || { today: { done: 0 } }
-  const cost = useStore('cost') // Claude Code 每天花了多少钱（cost.js 记的），没有数据时不显示
   const usage = useStore('usage') // 本插件 server.js 读的额度
   const config = useConfig()
   // 猫的样子是插件配置（和 App 里「菜单栏的猫」分开设置）
@@ -196,7 +195,8 @@ function CatPage({ openToday }) {
       </Text>
       <QuotaBar quota={quota} />
       <View style={{ width: 192, height: 142, marginTop: 2, justifyContent: 'center', alignItems: 'center' }} onClick={next}>
-        <Sprite key={skin + '-' + mood} frames={frames(skin, action)} duration={duration} style={{ width: 140, height: 140 }} />
+        {/* 换状态时只换帧（帧变了从第一帧播），不换 key 重建 */}
+        <Sprite frames={frames(skin, action)} duration={duration} style={{ width: 140, height: 140 }} />
       </View>
       {focus ? (
         // 状态色画成一整圈描边（手环和 App 里的预览画出来一样）
@@ -226,12 +226,22 @@ function CatPage({ openToday }) {
           )
         )}
         <Spacer />
-        <Row align="center" onClick={openToday} style={{ height: 22, paddingLeft: 4 }}>
-          {cost && <Text style={{ marginRight: 6, fontSize: 12, color: cost.today > 0 ? COST_COLOR : '#5c6068' }}>{fmtUsdShort(cost.today)}</Text>}
-          <Image src={asset('assets/fish.png')} style={{ width: 24, height: 12 }} />
-          <Text style={{ marginLeft: 4, fontSize: 12, color: stats.today.done > 0 ? '#e29640' : '#5c6068' }}>{stats.today.done}</Text>
-        </Row>
+        <Tally openToday={openToday} />
       </Row>
     </View>
+  )
+}
+
+// 右下角：今天花的钱 + 小鱼干。单独一个组件：钱数变得勤（开着 Claude Code 时几十秒就变一次），
+// 变了只重算这一小块，不用把整个猫页重算一遍（手环上重算猫页要两三百毫秒，猫的动画会卡一下）
+function Tally({ openToday }) {
+  const stats = useStore('stats') || { today: { done: 0 } }
+  const cost = useStore('cost') // Claude Code 每天花了多少钱（cost.js 记的），没有数据时不显示
+  return (
+    <Row align="center" onClick={openToday} style={{ height: 22, paddingLeft: 4 }}>
+      {cost && <Text style={{ marginRight: 6, fontSize: 12, color: cost.today > 0 ? COST_COLOR : '#5c6068' }}>{fmtUsdShort(cost.today)}</Text>}
+      <Image src={asset('assets/fish.png')} style={{ width: 24, height: 12 }} />
+      <Text style={{ marginLeft: 4, fontSize: 12, color: stats.today.done > 0 ? '#e29640' : '#5c6068' }}>{stats.today.done}</Text>
+    </Row>
   )
 }

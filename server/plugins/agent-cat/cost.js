@@ -3,6 +3,7 @@
 // 钱数是 Claude Code 自己算的：它传给状态栏命令的数据里有 cost.total_cost_usd（这个会话一共花了多少，和 /cost 一样）。
 // App 里打开「显示 Claude Code 额度」后，状态栏脚本按会话把这份数据各存一份到 claude-sessions/<会话 id>.json。
 // 这里每 2 秒看一眼这个目录，只读修改时间变了的；按会话记下上次的钱数，涨了多少就记到当天。
+// 推给手环最多 30 秒一次：开着 Claude Code 时钱数几秒就变一次，每推一次手环都要重算界面（猫的动画会卡一下）。
 // 旧版脚本只写 claude-status.json（几个会话同时开着时只留最后刷新的那个），目录里还没有文件时退回读它。
 // 所以只记得到打开开关之后的；之前开着的会话只从开始记账时算起。没打开过开关、也没有记录的，不推，界面上不显示。
 import { publish, readFile, readDir, stat, storage, home } from 'miband/server'
@@ -75,11 +76,24 @@ function check() {
   const keys = Object.keys(cost.days).sort()
   for (const old of keys.slice(0, Math.max(0, keys.length - 400))) delete cost.days[old]
   storage.set('cost', cost)
-  publishCost()
+  publishSoon()
+}
+
+const PUBLISH_MS = 30000
+let lastPublish = 0
+let pending = null
+
+function publishSoon() {
+  if (pending) return
+  pending = setTimeout(() => {
+    pending = null
+    publishCost()
+  }, Math.max(0, lastPublish + PUBLISH_MS - Date.now()))
 }
 
 // 推给手环的样子：今天的钱数 + 最近 7 天（最后一个是今天）
 function publishCost() {
+  lastPublish = Date.now()
   if (Object.keys(cost.sessions).length === 0 && Object.keys(cost.days).length === 0) return publish('cost', null)
   const days = []
   for (let i = 6; i >= 0; i--) {

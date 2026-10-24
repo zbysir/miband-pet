@@ -267,7 +267,7 @@ func TestAgentCatFishAndImpatient(t *testing.T) {
 		t.Fatalf("默认显示用得最多的额度：%v", texts(tree))
 	}
 	sprite := find(tree, func(n map[string]any) bool { return n["t"] == "a" })
-	if sprite["d"] != "300ms" {
+	if sprite["d"] != "1200ms" {
 		t.Fatalf("着急时举牌要更快：%v", sprite["d"])
 	}
 	// 小鱼干的数就是今天完成了几个任务
@@ -841,20 +841,34 @@ func TestAgentCatCost(t *testing.T) {
 	h, f := startHost(t, plugins.FS, "")
 	h.DataDir = t.TempDir()
 	h.HandleMessage(map[string]any{"t": "hello", "have": []any{}})
-	costIs := func(want string) {
+	// 一打开就推一次
+	f.wait(t, func(m map[string]any) bool {
+		raw, _ := json.Marshal(m["v"])
+		return m["t"] == "store" && m["name"] == "agent-cat:cost" && strings.Contains(string(raw), `"today":0`)
+	})
+	// 之后推给手环最多 30 秒一次，这里看插件存下来的账
+	costIs := func(want float64) {
 		t.Helper()
-		f.wait(t, func(m map[string]any) bool {
-			raw, _ := json.Marshal(m["v"])
-			return m["t"] == "store" && m["name"] == "agent-cat:cost" && strings.Contains(string(raw), want)
-		})
+		key := now.Format("2006-01-02")
+		var got any
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+			raw, _ := os.ReadFile(filepath.Join(h.DataDir, "agent-cat.json"))
+			var data struct {
+				Cost struct{ Days map[string]float64 } `json:"cost"`
+			}
+			_ = json.Unmarshal(raw, &data)
+			if got = data.Cost.Days[key]; got == want {
+				return
+			}
+		}
+		t.Fatalf("今天的钱数是 %v，想要 %v", got, want)
 	}
-	costIs(`"today":0`)
 	write("old", 52.5, 2*time.Hour, now.Add(time.Second)) // 涨了 2.5
-	costIs(`"today":2.5`)
+	costIs(2.5)
 	write("new", 1.25, time.Second, now.Add(2*time.Second)) // 记账之后开的会话：全算
-	costIs(`"today":3.75`)
+	costIs(3.75)
 	write("old", 0.5, time.Second, now.Add(3*time.Second)) // 会话重新打开，钱数从 0 重算
-	costIs(`"today":4.25`)
+	costIs(4.25)
 
 	// 新版状态栏脚本按会话各存一份：几个会话同时刷新也都记得到（这时不再看 claude-status.json）
 	sessions := filepath.Join(dir, "claude-sessions")
@@ -870,7 +884,7 @@ func TestAgentCatCost(t *testing.T) {
 	writeSession("old", 0.75, now.Add(4*time.Second)) // +0.25
 	writeSession("x", 2, now.Add(4*time.Second))      // 新会话 +2
 	writeSession("y", 3, now.Add(4*time.Second))      // 同时刷新的另一个新会话 +3
-	costIs(`"today":9.5`)
+	costIs(9.5)
 	if e := h.Plugins()[0].Error; e != "" {
 		t.Fatalf("猫插件出错：%s", e)
 	}

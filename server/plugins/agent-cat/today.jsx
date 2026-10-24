@@ -69,20 +69,30 @@ function Quota({ label, w }) {
   )
 }
 
-export function Today() {
-  // 整页一样大，放在 Pager 里当第二屏
-  const stats = useStore('stats') || { today: { done: 0 }, days: [] }
-  const cost = useStore('cost')
+// 额度列表。单独一个组件：切小鱼干 / 钱数时不用重算这里
+function Quotas() {
   const usage = useStore('usage') || []
-  const [picked, setMetric] = useState('done')
-  const metric = cost ? picked : 'done'
-  const days = metric === 'usd' ? cost.days.map((d) => ({ ...d, value: d.usd })) : stats.days.map((d) => ({ ...d, value: d.done }))
-  // 选中的那项底下垫一块颜色
-  const pick = (m) => ({ padding: [4, 6], borderRadius: 8, backgroundColor: metric === m && cost ? '#16191f' : '#0a0c12' })
-  const screen = useScreen()
-  const now = new Date()
   const quotas = []
   for (const src of usage) for (const w of src.windows || []) quotas.push({ label: `${AGENT_NAME[src.agent] || src.agent} ${w.name}`, w })
+  return (
+    <Col>
+      <Text style={{ fontSize: 12, color: '#8a8f98', marginTop: 10 }}>额度</Text>
+      {quotas.length > 0 ? (
+        quotas.slice(0, 4).map((q) => <Quota key={q.label} label={q.label} w={q.w} />)
+      ) : (
+        <Text style={{ fontSize: 10, color: '#5c6068', marginTop: 4 }}>还没有额度数据。Claude Code 的要在 App 里打开「显示 Claude Code 额度」</Text>
+      )}
+    </Col>
+  )
+}
+
+// ready 为 false 时只画一块同样大的空白（打开时先不画今日页，见 index.jsx）。空白和今日页是同一个组件交出的同一个根节点，
+// 换过来时 Pager 的几页结构不变，猫那页不会跟着重建
+export function Today({ ready }) {
+  // 整页一样大，放在 Pager 里当第二屏
+  const screen = useScreen()
+  if (!ready) return <Col style={{ width: 212, height: screen.height, backgroundColor: '#0a0c12' }} />
+  const now = new Date()
 
   return (
     <Col style={{ width: 212, height: screen.height, padding: [10, 10], backgroundColor: '#0a0c12' }}>
@@ -91,19 +101,41 @@ export function Today() {
         <Spacer />
         <Text style={{ fontSize: 11, color: '#8a8f98' }}>{`${now.getMonth() + 1}月${now.getDate()}日 周${WEEKDAYS[now.getDay()]}`}</Text>
       </Row>
+      <Metrics />
+      <Quotas />
+      <Spacer />
+      <Text style={{ fontSize: 9, color: '#3a3d44', textAlign: 'center' }}>往下翻回到猫</Text>
+    </Col>
+  )
+}
+
+// 小鱼干、钱数两块和柱状图。点哪块柱状图就换成哪项；选中的状态在这里，切换时只重算这一部分
+function Metrics() {
+  const stats = useStore('stats') || { today: { done: 0 }, days: [] }
+  const cost = useStore('cost')
+  const [picked, setMetric] = useState('done')
+  const metric = cost ? picked : 'done'
+  const days = metric === 'usd' ? cost.days.map((d) => ({ ...d, value: d.usd })) : stats.days.map((d) => ({ ...d, value: d.done }))
+  // 选中的那项下面一条亮色短线。不换整块的底色：小米手环 9 Pro 上元素换了样式要重建（连同里面的图片、文字），
+  // 换一条线只重建这一个元素，切换快很多
+  const mark = (m) => <View style={{ width: 20, height: 2, marginTop: 3, borderRadius: 1, backgroundColor: metric === m ? METRIC[m].today : '#22252c' }} />
+  return (
+    <>
       {cost ? (
         <Row align="center" style={{ marginTop: 6 }}>
-          <Col style={{ width: 92, ...pick('done') }} onClick={() => setMetric('done')}>
+          <Col style={{ width: 92, padding: [4, 6] }} onClick={() => setMetric('done')}>
             <Row align="center">
               <Image src={asset('assets/fish.png')} style={{ width: 28, height: 14 }} />
               <Text style={{ marginLeft: 6, fontSize: 20, fontWeight: 'bold', color: '#e29640' }}>{String(stats.today.done)}</Text>
             </Row>
             <Text style={{ fontSize: 11, color: '#8a8f98' }}>完成的任务</Text>
+            {mark('done')}
           </Col>
           <Spacer />
-          <Col style={{ width: 92, ...pick('usd') }} onClick={() => setMetric('usd')}>
+          <Col style={{ width: 92, padding: [4, 6] }} onClick={() => setMetric('usd')}>
             <Text style={{ fontSize: 20, fontWeight: 'bold', color: METRIC.usd.today, lines: 1 }}>{fmtUsd(cost.today)}</Text>
             <Text style={{ fontSize: 11, color: '#8a8f98' }}>Claude 花的钱</Text>
+            {mark('usd')}
           </Col>
         </Row>
       ) : (
@@ -116,14 +148,6 @@ export function Today() {
         </Row>
       )}
       {days.length > 0 && <Chart days={days} metric={metric} />}
-      <Text style={{ fontSize: 12, color: '#8a8f98', marginTop: 10 }}>额度</Text>
-      {quotas.length > 0 ? (
-        quotas.slice(0, 4).map((q) => <Quota key={q.label} label={q.label} w={q.w} />)
-      ) : (
-        <Text style={{ fontSize: 10, color: '#5c6068', marginTop: 4 }}>还没有额度数据。Claude Code 的要在 App 里打开「显示 Claude Code 额度」</Text>
-      )}
-      <Spacer />
-      <Text style={{ fontSize: 9, color: '#3a3d44', textAlign: 'center' }}>往下翻回到猫</Text>
-    </Col>
+    </>
   )
 }

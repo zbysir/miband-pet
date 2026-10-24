@@ -72,7 +72,7 @@ export default function Counter() {
 | `Text` | 文字。默认白色 14px。单行省略：`{ width: 120, lines: 1, textOverflow: 'ellipsis' }` |
 | `Image` | 图片：`<Image src={asset('assets/icon.png')} style={{ width: 24, height: 24 }} />` |
 | `Pager` | 翻页：每个子元素是一页，手环上是原生的 swiper，翻页跟着手指走。`<Pager vertical index={page} onChange={setPage}>`，`vertical` 默认是纵向；不传 `index` 时它自己记住翻到哪页。**只能是插件界面的最外层**，每一页要和屏幕一样大（`useScreen()`）。例子见 Agent 猫插件 |
-| `Sprite` | 逐帧动画，在手环本地循环播放：`<Sprite frames={[asset('a.png'), asset('b.png')]} duration={800} style={{ width: 80, height: 80 }} />`。换动画时给它换个 `key`，动画才会从头播 |
+| `Sprite` | 逐帧动画，在手环本地循环播放：`<Sprite frames={[asset('a.png'), asset('b.png')]} duration={800} style={{ width: 80, height: 80 }} />`。`frames` 或 `duration` 变了会从第一帧重新播，不用换 `key`。手环上是定时换图播的，每帧停得越短越费电，一帧两三百毫秒以上比较合适 |
 
 字符串直接写在 `View` 里会自动包成 `Text`。
 
@@ -207,7 +207,8 @@ App 里的「插件预览」用和手环上同一份运行时、同一份编译�
 
 - **server.js 跑在 Mac 上，界面跑在手环上**，两边只能通过 `call` 和 `publish` 传数据（经蓝牙，几十毫秒）。
 - **View 最多嵌套 6 层**（根算第 1 层）。超过会显示出错页。
-- **新建节点很慢，约 10ms 一个**；结构不变、只改文字和样式很快。所以一页控制在几十个节点以内，长列表分页（`useSwipe` 翻页），不要每次渲染都换 `key`。
+- **新建节点很慢，约 10ms 一个**（小米手环 9 Pro 上约 30ms）；结构不变、只改文字和样式很快。所以一页控制在几十个节点以内，长列表分页（`useSwipe` 翻页），不要每次渲染都换 `key`。
+- **小米手环 9 Pro 上，样式里去掉某一项（比如有时写 `borderColor`、有时不写）会让这个元素连同里面的内容重建**，比只改值慢。会变的样式写成同一组属性、只换值，比如不选中时用暗色而不是不写。
 - **手环的 JS 比 Mac 慢上百倍**（10 万次循环约 0.3 秒）。渲染函数里别做重计算。
 - 支持到 ES2020 的语法；只能 `import` `miband` 和插件目录里的文件。
 - 没有滚动容器。动画用 `Sprite` 在手环本地播，不要用定时器一帧帧改界面。
