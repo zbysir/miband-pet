@@ -13,10 +13,6 @@
 
 > 非小米官方项目。用的是逆向出来的非官方协议（移植自 Gadgetbridge、OronBox），风险自负。许可证 AGPL-3.0，致谢见 [NOTICE.md](NOTICE.md)。
 
-## 如何自己做插件
-
-让 AI（Claude Code、Codex 等）先读 https://github.com/zbysir/wristkit/blob/main/skills/wristkit-plugin/SKILL.md ，再告诉它你想在手环上看到什么。
-
 ## 需要什么
 
 - 一台 Mac。
@@ -56,7 +52,9 @@ App 没有经过 Apple 公证（要付费的开发者账号），第一次打开
 
 ## 写插件
 
-插件是一个文件夹，放进插件目录（App 的「插件」里点「打开插件目录」），保存就出现在手环上：
+**最快的办法**：让 AI（Claude Code、Codex 等）先读 https://github.com/zbysir/wristkit/blob/main/skills/wristkit-plugin/SKILL.md ，再告诉它你想在手环上看到什么。
+
+自己写的话，插件是一个文件夹，放进插件目录（App 的「插件」里点「打开插件目录」），保存就出现在手环上：
 
 ```jsx
 // index.jsx
