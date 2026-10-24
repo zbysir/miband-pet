@@ -219,21 +219,24 @@ function Bubble({ pool, nextRef }) {
     if (pool.length > 1) setFocusId(pool[(index + 1) % pool.length].id)
   }
   nextRef.current = next
-  if (!focus) return <View style={{ height: 62, marginTop: 6 }} />
+  // 没有 agent 时也画同一个框，只是边框和底色跟页面背景一样、里面是空的：小米手环 9 Pro 上已经画出来的元素
+  // 后加上排版样式（方向、内边距这些）不生效，空框换成气泡时只能改颜色
+  const bg = focus ? '#16191f' : '#0a0c12'
+  const border = focus ? COLOR[focus.status] || COLOR.unknown : '#0a0c12'
   // 状态色画成一整圈描边（手环和 App 里的预览画出来一样）
   return (
     <View
       onClick={next}
       style={{
-        width: 192, height: 62, marginTop: 6, padding: [6, 10], borderRadius: 14, backgroundColor: '#16191f',
-        flexDirection: 'column', borderWidth: 2, borderColor: COLOR[focus.status] || COLOR.unknown
+        width: 192, height: 62, marginTop: 6, padding: [6, 10], borderRadius: 14, backgroundColor: bg,
+        flexDirection: 'column', borderWidth: 2, borderColor: border
       }}
     >
-      <Row align="center">
+      {focus && <Row align="center">
         <Text style={{ flex: 1, fontSize: 14, fontWeight: 'bold', lines: 1, textOverflow: 'ellipsis' }}>{focus.project || focus.agent || '?'}</Text>
         {pool.length > 1 && <Text style={{ marginLeft: 6, fontSize: 11, color: '#8a8f98' }}>{`${index + 1}/${pool.length}`}</Text>}
-      </Row>
-      <Text style={{ fontSize: 12, color: '#8a8f98', lines: 1, textOverflow: 'ellipsis' }}>{focus.title || ''}</Text>
+      </Row>}
+      {focus && <Text style={{ fontSize: 12, color: '#8a8f98', lines: 1, textOverflow: 'ellipsis' }}>{focus.title || ''}</Text>}
     </View>
   )
 }
