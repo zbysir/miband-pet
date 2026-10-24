@@ -11,8 +11,8 @@ import (
 	"miband/internal/tray"
 )
 
-// 菜单栏的猫头：App 自己的一套猫（frontend/public/pet，和插件的分开），不跟着 agent 状态动（agent 状态是 Agent 猫插件在手环上显示的），
-// 只按 App 里选的菜单栏猫换颜色。手环上的猫是插件自己的配置，两只可以不一样。
+// 菜单栏的猫头：App 自己的一套猫（frontend/public/pet，和手环上 app 的分开），不跟着 agent 状态动（agent 状态是手环上的 Agent 猫显示的），
+// 只按 App 里选的菜单栏猫换颜色。手环上的猫是 Agent 猫自己的配置，两只可以不一样。
 
 type trayAnim struct {
 	mu    sync.Mutex

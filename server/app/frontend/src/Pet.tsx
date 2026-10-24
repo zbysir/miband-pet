@@ -1,6 +1,6 @@
 import {useEffect, useState} from 'react'
 
-// App 自己的猫（连接向导、「菜单栏的猫」；菜单栏图标也从这里裁）：public/pet，和手环上 Agent 猫插件的帧分开放。
+// App 自己的猫（连接向导、「菜单栏的猫」；菜单栏图标也从这里裁）：public/pet，和手环上 Agent 猫的帧分开放。
 // 两套都由 tools/gen_pet.py 画出来，App 这套只有用到的几种动作
 export type Mood = 'celebrate' | 'work' | 'sleep'
 export type Skin = 'orange' | 'gray' | 'white'

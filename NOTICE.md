@@ -10,7 +10,7 @@
 另外参考或使用了：
 
 - **[AIStatusForMiBand10pro](https://github.com/YuzH1/AIStatusForMiBand10pro)**（MIT，Copyright (c) 2026 YangZifan (YuzH1)）
-  快应用的写法参考了它；`render-app/sign/debug/`、`spike/render-app/sign/debug/` 下的调试签名证书取自该项目。MIT 许可全文见下。
+  快应用的写法参考了它；`server/internal/quickapp/sign/`、`spike/render-app/sign/debug/` 下的调试签名证书取自该项目。MIT 许可全文见下。
 - **[huami-token](https://github.com/argrento/huami-token)**（MIT）
   `get_key.py` 依赖它的小米健康云接口封装（作为依赖安装，未包含其代码）。
 - **[AstroBox](https://github.com/AstralSightStudios/AstroBox-Public)**（AGPL-3.0）

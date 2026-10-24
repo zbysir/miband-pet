@@ -1,19 +1,19 @@
 import {useCallback, useEffect, useState} from 'react'
 import type {ReactNode} from 'react'
 import {Check, Loader2} from 'lucide-react'
-import {Install, SaveSetup} from '../wailsjs/go/main/App'
+import {InstallApp, SaveSetup} from '../wailsjs/go/main/App'
 import {Button} from '@/components/ui/button'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {LoginPanel} from './Login'
 import {Pet} from './Pet'
-import type {AppState, BundledApp} from './types'
+import type {AppState} from './types'
 
 const STEPS = ['准备', '登录小米账号', '连接手环', '安装手环应用', '完成']
 
 // 连接向导：新手环（或换手环、重新绑定后）从头走一遍。
 // 连接本身由后台服务负责（经典蓝牙连不上会自动扫 BLE），向导只做引导和显示进度。
-export function Wizard({state, bundled, onFinish}: { state: AppState, bundled: BundledApp[], onFinish: () => void }) {
+export function Wizard({state, onFinish}: { state: AppState, onFinish: () => void }) {
     const [step, setStep] = useState(0)
     const next = useCallback(() => setStep(s => Math.min(s + 1, STEPS.length - 1)), [])
 
@@ -35,7 +35,7 @@ export function Wizard({state, bundled, onFinish}: { state: AppState, bundled: B
                 {step === 0 && <Prepare onNext={next}/>}
                 {step === 1 && <Login state={state} onNext={next}/>}
                 {step === 2 && <Connect state={state} onNext={next}/>}
-                {step === 3 && <InstallApps state={state} bundled={bundled} onNext={next}/>}
+                {step === 3 && <InstallApps state={state} onNext={next}/>}
                 {step === 4 && <Done state={state} onFinish={onFinish}/>}
             </div>
             {step < 4 && state.configured && (
@@ -139,15 +139,16 @@ function Connect({state, onNext}: { state: AppState, onNext: () => void }) {
     )
 }
 
-function InstallApps({state, bundled, onNext}: { state: AppState, bundled: BundledApp[], onNext: () => void }) {
+function InstallApps({state, onNext}: { state: AppState, onNext: () => void }) {
     const installed = new Set(state.packages ?? [])
     const [err, setErr] = useState('')
-    const missing = bundled.filter(b => !installed.has(b.package))
+    const builtin = (state.apps ?? []).filter(a => a.builtin)
+    const missing = builtin.filter(a => !installed.has(a.package))
 
     const installAll = async () => {
         setErr('')
         try {
-            for (const b of missing) await Install(b.package)
+            for (const a of missing) await InstallApp(a.name)
             onNext()
         } catch (e) {
             setErr(String(e))
@@ -157,15 +158,15 @@ function InstallApps({state, bundled, onNext}: { state: AppState, bundled: Bundl
     return (
         <>
             <Pet mood="work" size={112} skin={state.settings?.pet}/>
-            <Title>在手环上装上 wristkit</Title>
-            <Muted>手环上会多出一个应用「wristkit」，Agent 猫这些都是它里面的插件。</Muted>
-            {bundled.map(b => (
-                <div key={b.package} className="flex w-full items-center justify-between rounded-lg border px-4 py-3 text-sm">
-                    <span>{b.name}</span>
+            <Title>把 app 装到手环上</Title>
+            <Muted>每个 app 在手环上是一个单独的应用，装一个要十秒左右。以后在 App 里也能装、能更新。</Muted>
+            {builtin.map(a => (
+                <div key={a.name} className="flex w-full items-center justify-between rounded-lg border px-4 py-3 text-sm">
+                    <span>{a.title}</span>
                     <span className="text-xs text-muted-foreground">
-                        {state.installing === b.package
+                        {state.installing === a.name
                             ? `安装中 ${Math.round(state.installProgress * 100)}%`
-                            : installed.has(b.package) ? '已安装' : '待安装'}
+                            : installed.has(a.package) ? '已安装' : '待安装'}
                     </span>
                 </div>
             ))}
@@ -189,7 +190,7 @@ function Done({state, onFinish}: { state: AppState, onFinish: () => void }) {
             <Title>好了！</Title>
             <Muted>
                 手环现在由这台 Mac 连着，手机已经取消了配对，不会再连上来，手机蓝牙可以照常使用。
-                在手环上打开「wristkit」，就能看到 agent 的状态。关掉窗口后，wristkit 会留在菜单栏继续工作。
+                在手环上打开「Agent 猫」，就能看到 agent 的状态。关掉窗口后，wristkit 会留在菜单栏继续工作。
             </Muted>
             <Button onClick={onFinish}>开始使用</Button>
         </>

@@ -1,5 +1,5 @@
 """小鱼干图标：和猫一样逐像素手绘成字符格子图，按最近邻放大 SCALE 倍。
-输出到 Agent 猫插件：server/plugins/agent-cat/assets/fish.png。
+输出到 Agent 猫：server/apps/agent-cat/assets/fish.png。
 
     .venv/bin/python tools/gen_fish.py
 """
@@ -32,7 +32,7 @@ COLORS = {
 }
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUTS = [os.path.join(HERE, "..", "server", "plugins", "agent-cat", "assets", "fish.png")]
+OUTS = [os.path.join(HERE, "..", "server", "apps", "agent-cat", "assets", "fish.png")]
 
 
 def main():

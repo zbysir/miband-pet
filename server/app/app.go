@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -21,17 +20,12 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"miband/apps"
 	"miband/internal/micloud"
 	"miband/internal/service"
 	"miband/internal/tray"
 	"miband/internal/xiaomi"
-	"miband/plugins"
 )
-
-// 打包进 App 的手环快应用：渲染器（make app 时从 render-app/dist 复制进来）
-//
-//go:embed all:rpk
-var rpkFS embed.FS
 
 // App 是绑定给前端的对象：前端通过 window.go.main.App.* 调用这些导出方法。
 type App struct {
@@ -148,7 +142,7 @@ func (a *App) restartService() {
 	a.stopService()
 	cfg, err := service.LoadConfig(a.cfgPath)
 	if err == nil && cfg.MigrateLegacy() {
-		// 旧版的提醒设置搬进了 Agent 猫插件的配置
+		// 旧版的提醒设置搬进了 Agent 猫的配置
 		if err := cfg.Save(a.cfgPath); err != nil {
 			slog.Warn("保存配置失败", "err", err)
 		}
@@ -185,7 +179,7 @@ func (a *App) restartService() {
 	a.emitState()
 }
 
-// emitStores 通知前端插件数据变了（预览重新拉）；合并短时间内的多次变化。
+// emitStores 通知前端 app 数据变了（预览重新拉）；合并短时间内的多次变化。
 func (a *App) emitStores() {
 	a.emitMu.Lock()
 	if a.storesDue {
@@ -378,7 +372,7 @@ func (a *App) SaveSetup(authKey, address string) error {
 	return nil
 }
 
-// SetPet 换菜单栏的猫（手环上的猫在 Agent 猫插件的设置里）。
+// SetPet 换菜单栏的猫（手环上的猫在 Agent 猫的设置里）。
 func (a *App) SetPet(skin string) error {
 	svc, err := a.service()
 	if err != nil {
@@ -407,68 +401,18 @@ func (a *App) Launch(pkg string) error {
 	return svc.Launch(pkg)
 }
 
-type BundledApp struct {
-	Package     string `json:"package"`
-	Name        string `json:"name"`
-	VersionCode uint32 `json:"versionCode"`
-	File        string `json:"file"`
-}
-
-// BundledApps 列出打包进 App 的手环快应用。
-func (a *App) BundledApps() []BundledApp {
-	var out []BundledApp
-	entries, _ := fs.ReadDir(rpkFS, "rpk")
-	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".rpk") {
-			continue
-		}
-		path, err := a.extractRpk(e.Name())
-		if err != nil {
-			continue
-		}
-		m, err := xiaomi.ReadManifest(path)
-		if err != nil {
-			continue
-		}
-		out = append(out, BundledApp{Package: m.Package, Name: m.Name, VersionCode: m.VersionCode, File: e.Name()})
-	}
-	return out
-}
-
-func (a *App) extractRpk(name string) (string, error) {
-	data, err := rpkFS.ReadFile("rpk/" + name)
-	if err != nil {
-		return "", err
-	}
-	path := filepath.Join(os.TempDir(), "miband-pet-"+name)
-	return path, os.WriteFile(path, data, 0o644)
-}
-
-// Install 把打包进来的快应用（渲染器）装（或更新）到手环上并打开。
-func (a *App) Install(pkg string) error {
+// InstallApp 把 app 打包装（或更新）到手环上并打开。
+func (a *App) InstallApp(name string) error {
 	svc, err := a.service()
-	if err != nil {
-		return err
-	}
-	var file string
-	for _, b := range a.BundledApps() {
-		if b.Package == pkg {
-			file = b.File
-		}
-	}
-	if file == "" {
-		return fmt.Errorf("App 里没有打包 %s", pkg)
-	}
-	path, err := a.extractRpk(file)
 	if err != nil {
 		return err
 	}
 	a.mu.Lock()
 	if a.installing != "" {
 		a.mu.Unlock()
-		return errors.New("正在安装另一个应用")
+		return errors.New("正在安装另一个 app")
 	}
-	a.installing, a.progress = pkg, 0
+	a.installing, a.progress = name, 0
 	a.mu.Unlock()
 	a.emitState()
 	defer func() {
@@ -477,7 +421,7 @@ func (a *App) Install(pkg string) error {
 		a.mu.Unlock()
 		a.emitState()
 	}()
-	return svc.Install(path, func(i, n int) {
+	return svc.InstallApp(name, func(i, n int) {
 		a.mu.Lock()
 		a.progress = float64(i) / float64(n)
 		a.mu.Unlock()
@@ -485,16 +429,16 @@ func (a *App) Install(pkg string) error {
 	})
 }
 
-// ShowPlugin 让手环显示这个插件（手环上没开着就先打开）。
-func (a *App) ShowPlugin(name string) error {
+// OpenApp 在手环上打开这个 app。
+func (a *App) OpenApp(name string) error {
 	svc, err := a.service()
 	if err != nil {
 		return err
 	}
-	return svc.ShowPlugin(name)
+	return svc.OpenApp(name)
 }
 
-// Uninstall 卸载手环上的快应用（清掉改成插件之前的旧版 Agent 猫、Agents 列表）。
+// Uninstall 卸载手环上的快应用（app，或以前版本留下的旧应用）。
 func (a *App) Uninstall(pkg string) error {
 	svc, err := a.service()
 	if err != nil {
@@ -503,56 +447,64 @@ func (a *App) Uninstall(pkg string) error {
 	return svc.Remove(pkg)
 }
 
-// OpenPluginDir 在访达里打开用户插件目录（没有就先建，放一份说明）。
-func (a *App) OpenPluginDir() error {
-	dir := service.PluginDir()
+// OpenAppDir 在访达里打开用户 app 目录（没有就先建，放一份说明）。
+func (a *App) OpenAppDir() error {
+	dir := service.AppDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	readme := filepath.Join(dir, "README.md")
 	if _, err := os.Stat(readme); os.IsNotExist(err) {
-		_ = os.WriteFile(readme, []byte(pluginReadme), 0o644)
+		_ = os.WriteFile(readme, []byte(appReadme), 0o644)
 	}
 	return exec.Command("open", dir).Run()
 }
 
-const pluginReadme = `# wristkit 插件目录
+const appReadme = `# wristkit app 目录
 
-每个子目录是一个插件（manifest.json + index.jsx），保存后自动编译、推到手环。
-内置插件（Agent 猫、今日、Agents）打包在 App 里，不在这个目录；想改的话，在 App 的「插件」里点「复制出来改」，
-会把源码复制到这里，同名插件会替换内置的那个。
+每个子目录是一个 app（manifest.json + index.ux），保存后 App 里的预览马上更新；点「装到手环」装到手环上。
+内置 app（Agent 猫）打包在 App 里，不在这个目录；想改的话，在 App 里点「复制出来改」，
+会把源码复制到这里，同名 app 会替换内置的那个。
 
-最小的插件：
+最简单的 app：
 
     hello/manifest.json   {"name": "hello", "title": "你好"}
-    hello/index.jsx
+    hello/index.ux
 
-        import { Col, Text, useState } from 'miband'
+        <template>
+          <div class="page" @click="add">
+            <text class="n">点了 {{n}} 下</text>
+          </div>
+        </template>
 
-        export default function Hello() {
-          const [n, setN] = useState(0)
-          return (
-            <Col padding={16}>
-              <Text style={{ fontSize: 18 }} onClick={() => setN(n + 1)}>点了 {n} 下</Text>
-            </Col>
-          )
+        <script>
+        export default {
+          private: { n: 0 },
+          add() { this.n++ }
         }
+        </script>
 
-完整说明：https://github.com/zbysir/wristkit/blob/main/docs/plugins.md
+        <style>
+        .page { width: 212px; flex-direction: column; justify-content: center; align-items: center; }
+        .n { font-size: 18px; color: #ffffff; }
+        </style>
+
+最省事的写法：让 AI 先读 https://github.com/zbysir/wristkit/blob/main/skills/wristkit-app/SKILL.md ，再告诉它你想在手环上看到什么。
+完整说明：https://github.com/zbysir/wristkit/blob/main/docs/apps.md
 `
 
-// CopyBuiltin 把内置插件的源码复制到用户插件目录，方便改；同名的用户插件会替换内置插件。
+// CopyBuiltin 把内置 app 的源码复制到用户 app 目录，方便改；同名的用户 app 会替换内置 app。
 func (a *App) CopyBuiltin(name string) error {
-	sub, err := fs.Sub(plugins.FS, name)
+	sub, err := fs.Sub(apps.FS, name)
 	if err != nil {
 		return err
 	}
 	if _, err := fs.Stat(sub, "manifest.json"); err != nil {
-		return fmt.Errorf("没有内置插件 %s", name)
+		return fmt.Errorf("没有内置 app %s", name)
 	}
-	dst := filepath.Join(service.PluginDir(), name)
+	dst := filepath.Join(service.AppDir(), name)
 	if _, err := os.Stat(dst); err == nil {
-		return fmt.Errorf("插件目录里已经有 %s 了", name)
+		return fmt.Errorf("app 目录里已经有 %s 了", name)
 	}
 	err = fs.WalkDir(sub, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -574,42 +526,50 @@ func (a *App) CopyBuiltin(name string) error {
 	return exec.Command("open", dst).Run()
 }
 
-// ---------- 插件 ----------
+// ---------- app ----------
 
-type PluginBundle struct {
-	Code   string            `json:"code"`
-	Assets map[string]string `json:"assets"` // 路径 → data URL
+type AppPreview struct {
+	App    string            `json:"app"`    // 编好的 app.js
+	Page   string            `json:"page"`   // 编好的页面
+	Assets map[string]string `json:"assets"` // 图片：路径（如 /assets/a.png）→ data URL
 }
 
-// PluginBundle 给预览用：插件编译好的界面代码和图片。
-func (a *App) PluginBundle(name string) (*PluginBundle, error) {
+// AppPreview 给预览用：app 编好的代码（和装到手环上的是同一份）和图片。
+func (a *App) AppPreview(name string) (*AppPreview, error) {
 	svc, err := a.service()
 	if err != nil {
 		return nil, err
 	}
-	code, assets, err := svc.PluginBundle(name)
+	files, err := svc.AppFiles(name)
 	if err != nil {
 		return nil, err
 	}
-	b := &PluginBundle{Code: code, Assets: map[string]string{}}
-	for path, data := range assets {
-		b.Assets[path] = "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)
+	p := &AppPreview{Assets: map[string]string{}}
+	for _, f := range files {
+		switch {
+		case f.Name == "app.js":
+			p.App = string(f.Body)
+		case f.Name == "pages/index/index.js":
+			p.Page = string(f.Body)
+		case strings.HasSuffix(f.Name, ".png"):
+			p.Assets["/"+f.Name] = "data:image/png;base64," + base64.StdEncoding.EncodeToString(f.Body)
+		}
 	}
-	return b, nil
+	return p, nil
 }
 
-// PluginStores 给预览用：所有插件数据（JSON 字符串，前端自己解析，不让 Wails 转类型）。
-func (a *App) PluginStores() (string, error) {
+// AppStores 给预览用：所有 app 数据（JSON 字符串，前端自己解析，不让 Wails 转类型）。
+func (a *App) AppStores() (string, error) {
 	svc, err := a.service()
 	if err != nil {
 		return "", err
 	}
-	raw, err := json.Marshal(svc.PluginStores())
+	raw, err := json.Marshal(svc.AppStores())
 	return string(raw), err
 }
 
-// PluginCall 预览里插件的 call(name, ...args)：和手环上发来的一样，交给 server.js 或 App 的功能。
-func (a *App) PluginCall(plugin, name string, argsJSON string) error {
+// AppCall 预览里 app 的 call(name, ...args)：和手环上发来的一样，交给 server.js 或 App 的功能。
+func (a *App) AppCall(app, name string, argsJSON string) error {
 	svc, err := a.service()
 	if err != nil {
 		return err
@@ -618,11 +578,11 @@ func (a *App) PluginCall(plugin, name string, argsJSON string) error {
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return err
 	}
-	return svc.PluginCall(plugin, name, args)
+	return svc.AppCall(app, name, args)
 }
 
-// SetPluginConfig 改插件的一个配置项；value 是 JSON（前端传字符串，不让 Wails 转类型）。
-func (a *App) SetPluginConfig(plugin, key, valueJSON string) error {
+// SetAppConfig 改 app 的一个配置项；value 是 JSON（前端传字符串，不让 Wails 转类型）。
+func (a *App) SetAppConfig(app, key, valueJSON string) error {
 	svc, err := a.service()
 	if err != nil {
 		return err
@@ -631,7 +591,7 @@ func (a *App) SetPluginConfig(plugin, key, valueJSON string) error {
 	if err := json.Unmarshal([]byte(valueJSON), &v); err != nil {
 		return err
 	}
-	cfg, err := svc.SetPluginConfig(plugin, key, v)
+	cfg, err := svc.SetAppConfig(app, key, v)
 	if err != nil {
 		return err
 	}
@@ -641,26 +601,26 @@ func (a *App) SetPluginConfig(plugin, key, valueJSON string) error {
 	return cfg.Save(a.cfgPath)
 }
 
-// AllowPlugin 允许插件的 server.js 用它要的权限；key 是界面上显示的那份权限（插件期间改了就不生效）。
-func (a *App) AllowPlugin(name, key string) error {
+// AllowApp 允许 app 的 server.js 用它要的权限；key 是界面上显示的那份权限（app 期间改了就不生效）。
+func (a *App) AllowApp(name, key string) error {
 	svc, err := a.service()
 	if err != nil {
 		return err
 	}
-	cfg := svc.AllowPlugin(name, key)
+	cfg := svc.AllowApp(name, key)
 	a.mu.Lock()
 	a.cfg = &cfg
 	a.mu.Unlock()
 	return cfg.Save(a.cfgPath)
 }
 
-// RevokePlugin 收回插件的权限。
-func (a *App) RevokePlugin(name string) error {
+// RevokeApp 收回 app 的权限。
+func (a *App) RevokeApp(name string) error {
 	svc, err := a.service()
 	if err != nil {
 		return err
 	}
-	cfg := svc.RevokePlugin(name)
+	cfg := svc.RevokeApp(name)
 	a.mu.Lock()
 	a.cfg = &cfg
 	a.mu.Unlock()

@@ -1,6 +1,6 @@
 // Package usage 管 Claude Code 和 Codex 的额度（5 小时窗口、每周窗口用了百分之几、什么时候重置）。
 //
-// 读额度的是 Agent 猫插件的 server.js（server/plugins/agent-cat/server.js），这里只剩：
+// 读额度的是 Agent 猫的 server.js（server/apps/agent-cat/server.js），这里只剩：
 //   - Statusline：接管 Claude Code 的状态栏命令拿额度（App 里的开关，见 statusline.go）；
 //   - Source / Window：server.js 推上来的数据的样子，App 界面显示用。
 package usage

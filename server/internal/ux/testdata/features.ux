@@ -1,0 +1,77 @@
+<template>
+  <!-- 编译器测试：各种写法都来一遍 -->
+  <div class="root {{rootClass}}" id="root" style="height: {{h}}px">
+    <text class="title">{{title}}</text>
+    <text>静态文字</text>
+    <text>
+      前面 {{a}} 中间 {{b + 1}}
+      后面
+    </text>
+    <text class="mix">共 <span style="color: #ff0000">{{n}}</span> 个</text>
+    <text if="{{mode === 'a'}}">A</text>
+    <text elif="{{mode === 'b'}}">B</text>
+    <text elif="mode === 'c'">C</text>
+    <text else>other</text>
+    <block if="{{show}}">
+      <text>在 block 里</text>
+      <div class="box" style="background-color: {{color}}; width: {{w}}px"></div>
+    </block>
+    <div for="{{list}}" class="row">
+      <text>{{$idx}}: {{$item.name}}</text>
+    </div>
+    <div for="item in list" tid="id">
+      <text>{{item.name}}</text>
+    </div>
+    <div for="(i, item) in list" tid="id" @click="pick(item.id, i)">
+      <text style="color: {{i === sel ? '#ffffff' : '#888888'}}">{{item.name}}</text>
+      <div for="(j, sub) in item.subs">
+        <text>{{i}}-{{j}} {{sub}} {{title}}</text>
+      </div>
+    </div>
+    <div @click="tap" onlongpress="hold('x')" @swipe="(e) => onSwipe(e.direction)"></div>
+    <div @click="go(evt)"></div>
+    <image src="/assets/a.png" class="img"></image>
+    <image src="{{'/assets/' + name + '.png'}}"></image>
+    <image src="/assets/{{name}}.png"></image>
+    <text style="width: 100px; padding: 2px 4px; color: #fff; opacity: 0.5">静态样式</text>
+    <text class="{{active ? 'on' : 'off'}}">{{Math.max(a, b)}} {{obj[key]}} {{fmt(a, 'x')}} {{list.length > 0 ? list[0].name : ''}}</text>
+    <text>{{ {x: a}.x }}</text>
+    <div data-id="{{a}}" data-long-name="static"></div>
+    <swiper vertical="true" index="{{page}}" @change="pageChange"><div></div></swiper>
+    <input type="button" value="{{label}}" disabled="true" />
+    <progress percent="{{pct}}"></progress>
+    <div show="{{visible}}"></div>
+  </div>
+</template>
+
+<script>
+export default {
+  private: {
+    title: 'hi',
+    a: 1,
+    b: 2
+  },
+  tap() {},
+  pick() {},
+  hold() {},
+  onSwipe() {},
+  go() {},
+  pageChange() {},
+  fmt() {}
+}
+</script>
+
+<style>
+.root { width: 212px; flex-direction: column; }
+#root { background-color: #000000; }
+text { font-size: 14px; }
+.a, .b { margin: 2px; }
+.c { margin: 1px 2px 3px; padding: 4px 6px; }
+.d { padding: 1px 2px 3px 4px; padding-left: 9px; }
+.e { border: 1px solid #ff0000; border-radius: 4px; }
+.f { border-width: 2px; border-color: #00ff00; border-left: 3px dashed #0000ff; }
+.g { flex: 1; opacity: 0.5; lines: 2; flex-grow: 1; font-weight: bold; }
+.h { width: 50%; color: #fff; background-color: rgba(0, 0, 0, 0.5); }
+.i { color: red; text-overflow: ellipsis; justify-content: space-between; }
+.j { left: -2px; position: absolute; top: 0; }
+</style>

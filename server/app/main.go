@@ -34,7 +34,7 @@ func main() {
 			TitleBar: mac.TitleBarHiddenInset(),
 			About: &mac.AboutInfo{
 				Title:   "wristkit",
-				Message: "小米手环上的插件：用 JSX 写，在手环上跑。\nhttps://github.com/zbysir/wristkit",
+				Message: "在 Mac 上给小米手环写 app、装 app。\nhttps://github.com/zbysir/wristkit",
 			},
 		},
 	})

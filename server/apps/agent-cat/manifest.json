@@ -1,0 +1,121 @@
+{
+  "name": "agent-cat",
+  "title": "Agent 猫",
+  "order": 0,
+  "permissions": {
+    "notify": true,
+    "exec": [
+      "herdr"
+    ],
+    "read": [
+      "~/.codex/sessions",
+      "~/Library/Application Support/miband-pet"
+    ]
+  },
+  "settings": [
+    {
+      "key": "skin",
+      "title": "猫",
+      "type": "select",
+      "options": [
+        {
+          "value": "orange",
+          "label": "橘猫"
+        },
+        {
+          "value": "gray",
+          "label": "灰猫"
+        },
+        {
+          "value": "white",
+          "label": "白猫"
+        },
+        {
+          "value": "clawd",
+          "label": "Clawd（Claude Code 的小家伙）"
+        }
+      ],
+      "default": "orange"
+    },
+    {
+      "key": "quota",
+      "title": "首页显示哪个额度",
+      "description": "猫的标题下面那根进度条。「今日」页总是显示全部额度。",
+      "type": "select",
+      "options": [
+        {
+          "value": "auto",
+          "label": "用得最多的"
+        },
+        {
+          "value": "claude:5h",
+          "label": "Claude 5h"
+        },
+        {
+          "value": "claude:7d",
+          "label": "Claude 7d"
+        },
+        {
+          "value": "codex:5h",
+          "label": "Codex 5h"
+        },
+        {
+          "value": "codex:7d",
+          "label": "Codex 7d"
+        },
+        {
+          "value": "off",
+          "label": "不显示"
+        }
+      ],
+      "default": "auto"
+    },
+    {
+      "key": "alert",
+      "title": "agent 跑完、卡住时",
+      "type": "select",
+      "options": [
+        {
+          "value": "notify",
+          "label": "发通知（手环震动）"
+        },
+        {
+          "value": "wake",
+          "label": "只亮屏"
+        },
+        {
+          "value": "off",
+          "label": "不提醒"
+        }
+      ],
+      "default": "notify"
+    },
+    {
+      "key": "notifyStart",
+      "title": "agent 开始跑时也提醒",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "impatientMin",
+      "title": "卡住几分钟算太久",
+      "description": "卡太久猫会着急，并再提醒一次。0 表示不管。",
+      "type": "number",
+      "default": 5
+    },
+    {
+      "key": "keepAwake",
+      "title": "有 agent 等你回答时保持亮屏",
+      "description": "每隔一会儿把手环点亮一次。比较费电。",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "key": "keepAwakeSec",
+      "title": "每隔几秒点亮一次",
+      "description": "5 到 60 秒，要比手环上设的亮屏时间短。",
+      "type": "number",
+      "default": 50
+    }
+  ]
+}

@@ -16,7 +16,7 @@ import (
 // 打开（Enable）时把 ~/.claude/settings.json 里的 statusLine.command 换成 Dir/statusline.sh：
 // 它先把状态栏数据存到 Dir/claude-status.json，再原样交给原来的状态栏命令，状态栏显示不变。
 // 同时按会话各存一份 Dir/claude-sessions/<会话 id>.json：同时开着几个会话时 claude-status.json 只留最后刷新的那个，
-// 按会话记花了多少钱（Agent 猫插件的 cost.js）要每个会话都看得到。
+// 按会话记花了多少钱（Agent 猫的 cost.js）要每个会话都看得到。
 // 原来的 statusLine 存在 Dir/statusline-orig.json，关掉（Disable）时原样还原。
 // 改 settings.json 之前备份到 settings.json.bak-miband-pet，只改 statusLine 这一项，其它键的顺序不变。
 type Statusline struct {

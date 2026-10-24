@@ -21,47 +21,41 @@ export interface AppState {
     connected: boolean
     transport: '' | 'classic' | 'ble'
     lastError: string
-    packages: string[] | null
+    packages: string[] | null // 手环上装了的 app（包名）
     versions: Record<string, number> | null // 手环上装了的快应用 → 版本号（versionCode）
     foreground: string
     usage: UsageSource[] | null
-    plugins: PluginInfo[] | null
-    pluginDir: string
+    apps: AppInfo[] | null
+    appDir: string
     legacy: string[] | null // 手环上还装着的旧版快应用
     lastPush: number
     settings: Settings | null
 }
 
-// 和 Go 侧 plugin.Info 对应
-export interface PluginInfo {
+// 和 Go 侧 bandapp.Info 对应
+export interface AppInfo {
     name: string
     title: string
     builtin: boolean
     dir: string
     error: string
-    active: boolean // 手环上当前显示的是这一页
-    code: string // 代码的哈希，变了预览重新加载
+    package: string // 手环上的包名
+    version: number // 安装包的版本号，和手环上装的不一样就要更新
+    foreground: boolean // 手环上正开着
     hasServer: boolean // 带 server.js
     permissions: string[] | null // server.js 要的权限
     needGrant: boolean // 要了权限还没允许，server.js 没跑
     permKey: string
-    settings: PluginSetting[] | null // manifest.json 里声明的配置项
+    settings: AppSetting[] | null // manifest.json 里声明的配置项
     config: Record<string, unknown> | null // 现在的配置
 }
 
-// 和 Go 侧 plugin.Setting 对应
-export interface PluginSetting {
+// 和 Go 侧 bandapp.Setting 对应
+export interface AppSetting {
     key: string
     title: string
     description?: string
     type: 'select' | 'bool' | 'number' | 'text'
     options?: { value: string, label: string }[]
     default: unknown
-}
-
-export interface BundledApp {
-    package: string
-    name: string
-    versionCode: number
-    file: string
 }

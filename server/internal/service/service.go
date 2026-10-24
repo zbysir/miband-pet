@@ -1,5 +1,5 @@
-// Package service 是常驻服务：连着手环，跑插件（server/internal/plugin）并把界面推给手环上的渲染器。
-// 读 agent 状态、提醒这些都是插件的事（见 server/plugins/agent-cat）。命令行（miband app）和 macOS App 共用。
+// Package service 是常驻服务：连着手环，管理 app（server/internal/bandapp）：编译、装到手环、给手环上开着的 app 推数据。
+// 读 agent 状态、提醒这些都是 app 的事（见 server/apps/agent-cat）。命令行（miband app）和 macOS App 共用。
 package service
 
 import (
@@ -8,17 +8,19 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"miband/apps"
+	"miband/internal/bandapp"
 	"miband/internal/bt"
-	"miband/internal/plugin"
+	"miband/internal/rpk"
 	"miband/internal/usage"
 	"miband/internal/xiaomi"
-	"miband/plugins"
 )
 
 const (
@@ -26,15 +28,13 @@ const (
 	maxReconnectInterval = time.Minute
 )
 
-// PackageRender 是手环上的通用渲染器（render-app），所有插件的界面都由它画。
-const PackageRender = "dev.bysir.mibandpet"
+// LegacyPackages 是以前版本装到手环上的快应用，已经不再用，界面上提示卸载：
+// 最早的 Agents 列表、Agent 猫，和后来所有插件共用的通用渲染器（每个 app 单独装成快应用之后就不要了）。
+var LegacyPackages = []string{"dev.bysir.herdrband", "dev.bysir.herdrpet", "dev.bysir.mibandpet"}
 
-// LegacyPackages 是改成插件之前的两个快应用（Agents 列表、Agent 猫），已经不再推送，界面上提示卸载。
-var LegacyPackages = []string{"dev.bysir.herdrband", "dev.bysir.herdrpet"}
-
-// PluginDir 是用户插件目录：~/Library/Application Support/miband-pet/plugins/<名字>/
-func PluginDir() string {
-	return filepath.Join(filepath.Dir(AppConfigPath()), "plugins")
+// AppDir 是用户 app 目录：~/Library/Application Support/miband-pet/apps/<名字>/
+func AppDir() string {
+	return filepath.Join(filepath.Dir(AppConfigPath()), "apps")
 }
 
 // Dial 连手环：先走经典蓝牙 RFCOMM（日常连接）；连不上就扫描 BLE 再连。
@@ -100,12 +100,12 @@ type State struct {
 	Connected  bool           `json:"connected"`
 	Transport  string         `json:"transport"` // classic / ble
 	LastError  string         `json:"lastError"`
-	Packages   []string       `json:"packages"`   // 手环上装了的快应用
+	Packages   []string       `json:"packages"`   // 手环上装了的 app（包名）
 	Versions   map[string]int `json:"versions"`   // 手环上装了的快应用 → 版本号（versionCode）
 	Foreground string         `json:"foreground"` // 手环上正在前台的快应用
 	Usage      []usage.Source `json:"usage"`
-	Plugins    []plugin.Info  `json:"plugins"`
-	PluginDir  string         `json:"pluginDir"`
+	Apps       []bandapp.Info `json:"apps"`
+	AppDir     string         `json:"appDir"`
 	Legacy     []string       `json:"legacy"`   // 手环上还装着的旧版快应用
 	LastPush   int64          `json:"lastPush"` // 毫秒
 	Settings   map[string]any `json:"settings"`
@@ -114,16 +114,16 @@ type State struct {
 type Service struct {
 	dev        *xiaomi.Device
 	apps       *xiaomi.Apps
-	host       *plugin.Host
+	host       *bandapp.Host
 	statusline usage.Statusline // 接管 Claude Code 的状态栏拿额度（App 里打开）
 	// 状态变化时回调（界面用来刷新），不要在里面阻塞
 	OnChange func()
-	// 插件数据（store）变化时回调（App 的插件预览用），不要在里面阻塞
+	// app 数据（store）变化时回调（App 的预览用），不要在里面阻塞
 	OnStore func()
 
 	mu         sync.Mutex
 	cfg        Config
-	packages   []string        // 手环上装了的渲染器（装了就是 [PackageRender]）
+	packages   []string        // 手环上装了的 app（包名）
 	versions   map[string]int  // 手环上装了的快应用 → 版本号
 	legacy     []string        // 手环上还装着的旧版快应用
 	foreground map[string]bool // 快应用打开时发 hello、离开时发 bye
@@ -160,13 +160,14 @@ func New(cfg Config) (*Service, error) {
 	}
 	apps := xiaomi.NewApps(dev)
 	s.dev, s.apps = dev, apps
-	s.host = plugin.NewHost()
-	s.host.Send = func(v any) error {
+	s.host = bandapp.NewHost()
+	s.host.Send = func(pkg string, v any) error {
 		if !s.dev.Connected() {
 			return errNotConnected
 		}
-		return s.apps.Send(PackageRender, v)
+		return s.apps.Send(pkg, v)
 	}
+	s.host.OnForeground = func(app string, on bool) { s.setForeground(s.host.PackageOf(app), on) }
 	s.host.OnChange = s.changed
 	s.host.OnStore = func(string) {
 		if s.OnStore != nil {
@@ -190,16 +191,10 @@ func New(cfg Config) (*Service, error) {
 	s.publishBand()
 	apps.OnMessage = func(pkg string, payload any) {
 		m, _ := payload.(map[string]any)
-		if pkg != PackageRender || m == nil {
+		if !strings.HasPrefix(pkg, bandapp.PackagePrefix) || m == nil {
 			return
 		}
-		switch m["t"] {
-		case "hello":
-			s.setForeground(pkg, true)
-		case "bye":
-			s.setForeground(pkg, false)
-		}
-		s.host.HandleMessage(m)
+		s.host.HandleMessage(pkg, m)
 	}
 	dev.OnDisconnect = func() {
 		s.host.Disconnected()
@@ -213,7 +208,7 @@ func New(cfg Config) (*Service, error) {
 // Run 一直跑到 ctx 结束；结束时关掉蓝牙通道。
 func (s *Service) Run(ctx context.Context) error {
 	defer s.dev.Close()
-	s.host.Load(plugins.FS, PluginDir())
+	s.host.Load(apps.FS, AppDir())
 	go s.host.Run(ctx)
 	s.keepConnected(ctx)
 	return ctx.Err()
@@ -242,8 +237,8 @@ func (s *Service) State() State {
 		Versions:  maps.Clone(s.versions),
 		Legacy:    append([]string{}, s.legacy...),
 		Usage:     s.usageLocked(),
-		Plugins:   s.host.Plugins(),
-		PluginDir: PluginDir(),
+		Apps:      s.host.Apps(),
+		AppDir:    AppDir(),
 		Settings: map[string]any{
 			"address": s.cfg.Address, "pet": s.cfg.PetSkin(), "claudeUsage": s.statusline.Enabled(),
 		},
@@ -255,7 +250,7 @@ func (s *Service) State() State {
 	return st
 }
 
-// SetPet 换菜单栏的猫（手环上的猫是 Agent 猫插件自己的配置，两个分开）。
+// SetPet 换菜单栏的猫（手环上的猫是 Agent 猫 app 自己的配置，两个分开）。
 func (s *Service) SetPet(skin string) Config {
 	s.mu.Lock()
 	s.cfg.Pet = skin
@@ -274,13 +269,13 @@ func (s *Service) SetClaudeUsage(on bool) error {
 	} else {
 		err = s.statusline.Disable()
 	}
-	// 让读额度的插件（server.js 里 on('refresh')）马上重新读一次
+	// 让读额度的 app（server.js 里 on('refresh')）马上重新读一次
 	s.host.CallAll("refresh", nil)
 	s.changed()
 	return err
 }
 
-// usageLocked 汇总各插件 server.js 推的额度（数据名是 usage 的，即 "<插件名>:usage"），给 App 界面看
+// usageLocked 汇总各 app 的 server.js 推的额度（数据名是 usage 的，即 "<app 名>:usage"），给 App 界面看
 func (s *Service) usageLocked() []usage.Source {
 	var out []usage.Source
 	stores := s.host.Stores()
@@ -300,9 +295,9 @@ func (s *Service) usageLocked() []usage.Source {
 	return out
 }
 
-// SetPluginConfig 改插件的一个配置项（App 的设置表单）。
-func (s *Service) SetPluginConfig(plugin, key string, value any) (Config, error) {
-	if err := s.host.SetConfig(plugin, key, value); err != nil {
+// SetAppConfig 改 app 的一个配置项（App 的设置表单）。
+func (s *Service) SetAppConfig(app, key string, value any) (Config, error) {
+	if err := s.host.SetConfig(app, key, value); err != nil {
 		s.mu.Lock()
 		cfg := s.cfg
 		s.mu.Unlock()
@@ -312,10 +307,10 @@ func (s *Service) SetPluginConfig(plugin, key string, value any) (Config, error)
 	if s.cfg.PluginConfig == nil {
 		s.cfg.PluginConfig = map[string]map[string]any{}
 	}
-	if s.cfg.PluginConfig[plugin] == nil {
-		s.cfg.PluginConfig[plugin] = map[string]any{}
+	if s.cfg.PluginConfig[app] == nil {
+		s.cfg.PluginConfig[app] = map[string]any{}
 	}
-	s.cfg.PluginConfig[plugin][key] = value
+	s.cfg.PluginConfig[app][key] = value
 	cfg := s.cfg
 	s.mu.Unlock()
 	s.changed()
@@ -334,26 +329,26 @@ func copyConfigs(m map[string]map[string]any) map[string]map[string]any {
 	return out
 }
 
-// ---------- 插件预览（App 窗口里跑插件） ----------
+// ---------- app 预览（App 窗口里跑 app） ----------
 
-// PluginBundle 返回插件编译好的界面代码和图片。
-func (s *Service) PluginBundle(name string) (string, map[string][]byte, error) {
-	return s.host.Bundle(name)
+// AppFiles 返回 app 编好的安装包里的文件（预览用）。
+func (s *Service) AppFiles(name string) ([]rpk.File, error) {
+	return s.host.Files(name)
 }
 
-// PluginStores 返回所有插件数据。
-func (s *Service) PluginStores() map[string]json.RawMessage {
+// AppStores 返回所有 app 数据。
+func (s *Service) AppStores() map[string]json.RawMessage {
 	return s.host.Stores()
 }
 
-// PluginCall 处理预览里插件的 call(name, ...args)，和手环上发来的走同一条路。
-func (s *Service) PluginCall(plugin, name string, args []any) error {
-	return s.host.Call(plugin, name, args)
+// AppCall 处理预览里 app 的 call(name, ...args)，和手环上发来的走同一条路。
+func (s *Service) AppCall(app, name string, args []any) error {
+	return s.host.Call(app, name, args)
 }
 
-// AllowPlugin 允许插件的 server.js 用它在 manifest.json 里要的权限。key 是界面上显示时的权限，
-// 和插件现在要的不一样（这期间插件改了）就不生效。
-func (s *Service) AllowPlugin(name, key string) Config {
+// AllowApp 允许 app 的 server.js 用它在 manifest.json 里要的权限。key 是界面上显示时的权限，
+// 和 app 现在要的不一样（这期间 app 改了）就不生效。
+func (s *Service) AllowApp(name, key string) Config {
 	s.mu.Lock()
 	if s.cfg.PluginGrants == nil {
 		s.cfg.PluginGrants = map[string]string{}
@@ -367,8 +362,8 @@ func (s *Service) AllowPlugin(name, key string) Config {
 	return cfg
 }
 
-// RevokePlugin 收回插件的权限，它的 server.js 停掉。
-func (s *Service) RevokePlugin(name string) Config {
+// RevokeApp 收回 app 的权限，它的 server.js 停掉。
+func (s *Service) RevokeApp(name string) Config {
 	s.mu.Lock()
 	delete(s.cfg.PluginGrants, name)
 	cfg := s.cfg
@@ -400,8 +395,8 @@ func (s *Service) setForeground(pkg string, on bool) {
 	s.changed()
 }
 
-// publishBand 把手环的状态推给插件（基座数据 band，见 plugin.BaseStores）：
-// connected 手环连着没有，foreground 手环上的 wristkit 开在前台没有（插件据此决定亮屏还是发通知）
+// publishBand 把手环的状态推给 server.js（基座数据 band，见 bandapp.BaseStores）：
+// connected 手环连着没有，foreground 手环上有没有 app 开在前台
 func (s *Service) publishBand() {
 	s.mu.Lock()
 	fg := s.foregroundLocked() != ""
@@ -450,9 +445,12 @@ func (s *Service) refreshApps() error {
 		versions[it.GetPackageName()] = int(it.GetVersionCode())
 	}
 	var list, legacy []string
-	if installed[PackageRender] {
-		list = append(list, PackageRender)
+	for p := range installed {
+		if strings.HasPrefix(p, bandapp.PackagePrefix) {
+			list = append(list, p)
+		}
 	}
+	sort.Strings(list)
 	for _, p := range LegacyPackages {
 		if installed[p] {
 			legacy = append(legacy, p)
@@ -460,7 +458,7 @@ func (s *Service) refreshApps() error {
 	}
 	s.mu.Lock()
 	s.packages, s.legacy, s.versions = list, legacy, versions
-	s.foreground = map[string]bool{} // 由快应用重新发 hello
+	s.foreground = map[string]bool{} // 由 app 重新发 hello
 	s.mu.Unlock()
 	s.publishBand()
 	slog.Info("手环上的快应用", "packages", list, "versions", versions)
@@ -518,7 +516,7 @@ func (s *Service) ensureConnected(ctx context.Context) {
 	}
 }
 
-// keepConnected 一直保持连着手环：断了就重连。界面和数据由插件宿主自己推。
+// keepConnected 一直保持连着手环：断了就重连。数据由 app 宿主自己推。
 func (s *Service) keepConnected(ctx context.Context) {
 	for ctx.Err() == nil {
 		s.ensureConnected(ctx)
@@ -542,19 +540,19 @@ func (s *Service) TestNotify() error {
 	return s.dev.Notify("wristkit", "测试通知 "+time.Now().Format("15:04:05"))
 }
 
-// wake 把手环点亮并显示这个插件（插件的 wakeBand）：把渲染器打开到前台，手环会亮屏、不震动。
+// wake 把手环点亮并打开这个 app（server.js 的 wakeBand）：手环会亮屏、不震动。
 func (s *Service) wake(name string) error {
 	if !s.dev.Connected() {
 		return errNotConnected
 	}
+	pkg := s.host.PackageOf(name)
 	s.mu.Lock()
-	installed := len(s.packages) > 0
+	installed := s.versions[pkg] > 0
 	s.mu.Unlock()
 	if !installed {
-		return errors.New("手环上还没装 wristkit")
+		return errors.New("手环上还没装这个 app")
 	}
-	s.host.Show(name)
-	return s.apps.Launch(PackageRender, "")
+	return s.apps.Launch(pkg, "")
 }
 
 func (s *Service) Launch(pkg string) error {
@@ -564,19 +562,28 @@ func (s *Service) Launch(pkg string) error {
 	return s.apps.Launch(pkg, "")
 }
 
-// ShowPlugin 让手环显示这个插件：手环上没开着渲染器就先打开它。
-func (s *Service) ShowPlugin(name string) error {
-	if !s.dev.Connected() {
-		return errNotConnected
+// OpenApp 在手环上打开这个 app。
+func (s *Service) OpenApp(name string) error {
+	return s.Launch(s.host.PackageOf(name))
+}
+
+// InstallApp 把 app 打包装到手环上（装过就更新）并打开。
+func (s *Service) InstallApp(name string, progress func(i, n int)) error {
+	data, _, err := s.host.Build(name)
+	if err != nil {
+		return err
 	}
-	s.host.Show(name)
-	s.mu.Lock()
-	fg := s.foregroundLocked() != ""
-	s.mu.Unlock()
-	if fg {
-		return nil
+	f, err := os.CreateTemp("", "wristkit-*.rpk")
+	if err != nil {
+		return err
 	}
-	return s.apps.Launch(PackageRender, "")
+	defer os.Remove(f.Name())
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	f.Close()
+	return s.Install(f.Name(), progress)
 }
 
 // Remove 卸载手环上的快应用（用来清掉旧版）。

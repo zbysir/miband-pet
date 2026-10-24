@@ -1,9 +1,9 @@
 import {useCallback, useEffect, useState} from 'react'
 import type {ReactNode} from 'react'
-import {Bell, FolderOpen, Gauge, PawPrint, Puzzle, RefreshCw, Watch} from 'lucide-react'
+import {Bell, FolderOpen, Gauge, LayoutGrid, PawPrint, RefreshCw, Watch} from 'lucide-react'
 import {
-    AllowPlugin, BundledApps, CopyBuiltin, GetState, Install, Launch, OpenPluginDir, RevokePlugin, SetClaudeUsage,
-    SetPet, SetPluginConfig, TestNotify, Uninstall,
+    AllowApp, CopyBuiltin, GetState, InstallApp, Launch, OpenApp, OpenAppDir, RevokeApp, SetAppConfig, SetClaudeUsage,
+    SetPet, TestNotify, Uninstall,
 } from '../wailsjs/go/main/App'
 import {EventsOn} from '../wailsjs/runtime/runtime'
 import {Badge} from '@/components/ui/badge'
@@ -17,13 +17,13 @@ import {Wizard} from './Wizard'
 import {Preview} from './Preview'
 import {SKINS} from './Pet'
 import type {Skin} from './Pet'
-import type {AppState, BundledApp, PluginInfo, PluginSetting} from './types'
+import type {AppInfo, AppSetting, AppState} from './types'
+import {bandStatus} from './status'
 
 type Run = (label: string, fn: () => Promise<unknown>) => void
 
 export default function App() {
     const [state, setState] = useState<AppState | null>(null)
-    const [bundled, setBundled] = useState<BundledApp[]>([])
     const [toast, setToast] = useState('')
     const [wizard, setWizard] = useState(false)
     const [selected, setSelected] = useState('')
@@ -40,7 +40,6 @@ export default function App() {
 
     useEffect(() => {
         refresh()
-        BundledApps().then(list => setBundled(list ?? []))
         const off = EventsOn('state', refresh)
         const t = setInterval(refresh, 30_000)
         return () => {
@@ -57,12 +56,12 @@ export default function App() {
 
     if (!state) return null
     if (wizard || !state.configured) {
-        return <Wizard state={state} bundled={bundled} onFinish={() => setWizard(false)}/>
+        return <Wizard state={state} onFinish={() => setWizard(false)}/>
     }
 
-    // 左边预览的是哪个插件：手动选过的 → 手环上正在显示的 → 第一个
-    const plugins = state.plugins ?? []
-    const plugin = plugins.find(p => p.name === selected) ?? plugins.find(p => p.active) ?? plugins[0]
+    // 左边预览的是哪个 app：手动选过的 → 手环上正开着的 → 第一个
+    const apps = state.apps ?? []
+    const app = apps.find(p => p.name === selected) ?? apps.find(p => p.foreground) ?? apps[0]
 
     return (
         <div className="grid h-screen grid-cols-[minmax(320px,380px)_1fr]">
@@ -71,19 +70,18 @@ export default function App() {
             <aside className="overflow-y-auto border-r px-6 pt-14 pb-6">
                 <div className="flex flex-col gap-4">
                     <div className="flex items-center justify-between">
-                        <h1 className="text-base font-semibold">插件预览</h1>
+                        <h1 className="text-base font-semibold">预览</h1>
                         <StatusBadge state={state}/>
                     </div>
-                    <Preview state={state} run={run} plugin={plugin} onSelect={setSelected}/>
+                    <Preview state={state} run={run} app={app} onSelect={setSelected}/>
                 </div>
             </aside>
             <main className="overflow-y-auto px-6 pt-14 pb-6">
                 <div className="flex flex-col gap-4">
-                {plugin && (plugin.settings?.length ?? 0) > 0 && <PluginSettingsCard plugin={plugin} run={run}/>}
+                {app && (app.settings?.length ?? 0) > 0 && <AppSettingsCard app={app} run={run}/>}
+                <AppsCard state={state} run={run} onSelect={setSelected}/>
                 <MenubarCard state={state} run={run}/>
                 <UsageCard state={state} run={run}/>
-                <BandAppsCard state={state} bundled={bundled} run={run}/>
-                <PluginsCard state={state} run={run} onSelect={setSelected}/>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => run('测试通知', TestNotify)} disabled={!state.connected}><Bell/>发测试通知</Button>
                     <Button variant="outline" onClick={() => setWizard(true)}><RefreshCw/>换手环 / 重新绑定</Button>
@@ -157,26 +155,26 @@ function StatusBadge({state}: { state: AppState }) {
     )
 }
 
-// ---------- 选中插件的配置 ----------
+// ---------- 选中 app 的配置 ----------
 
-function PluginSettingsCard({plugin, run}: { plugin: PluginInfo, run: Run }) {
+function AppSettingsCard({app, run}: { app: AppInfo, run: Run }) {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Puzzle className="size-4"/>{plugin.title}</CardTitle>
-                <CardDescription>左边预览的这个插件的设置，改了马上推到手环</CardDescription>
+                <CardTitle className="flex items-center gap-2"><LayoutGrid className="size-4"/>{app.title}</CardTitle>
+                <CardDescription>左边预览的这个 app 的设置，改了马上推到手环</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-5">
-                {(plugin.settings ?? []).map(s => <SettingField key={s.key} plugin={plugin} setting={s} run={run}/>)}
+                {(app.settings ?? []).map(s => <SettingField key={s.key} app={app} setting={s} run={run}/>)}
             </CardContent>
         </Card>
     )
 }
 
-// 插件的一个配置项：照着 manifest.json 里 settings 的声明画
-function SettingField({plugin, setting, run}: { plugin: PluginInfo, setting: PluginSetting, run: Run }) {
-    const value = plugin.config?.[setting.key] ?? setting.default
-    const save = (v: unknown) => run('保存配置', () => SetPluginConfig(plugin.name, setting.key, JSON.stringify(v)))
+// app 的一个配置项：照着 manifest.json 里 settings 的声明画
+function SettingField({app, setting, run}: { app: AppInfo, setting: AppSetting, run: Run }) {
+    const value = app.config?.[setting.key] ?? setting.default
+    const save = (v: unknown) => run('保存配置', () => SetAppConfig(app.name, setting.key, JSON.stringify(v)))
     switch (setting.type) {
         case 'bool':
             return <Row title={setting.title} hint={setting.description}><Switch checked={!!value} onCheckedChange={save}/></Row>
@@ -201,7 +199,7 @@ function SettingField({plugin, setting, run}: { plugin: PluginInfo, setting: Plu
     }
 }
 
-// ---------- 菜单栏的猫：App 自己的设置，和手环上 Agent 猫插件的「猫」分开选 ----------
+// ---------- 菜单栏的猫：App 自己的设置，和手环上 Agent 猫的「猫」分开选 ----------
 
 function MenubarCard({state, run}: { state: AppState, run: Run }) {
     const current = state.settings?.pet ?? 'orange'
@@ -209,7 +207,7 @@ function MenubarCard({state, run}: { state: AppState, run: Run }) {
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2"><PawPrint className="size-4"/>菜单栏的猫</CardTitle>
-                <CardDescription>手环上的猫在插件设置里单独选</CardDescription>
+                <CardDescription>手环上的猫在 Agent 猫的设置里单独选</CardDescription>
             </CardHeader>
             <CardContent className="flex gap-2">
                 {SKINS.map(s => (
@@ -225,7 +223,7 @@ function MenubarCard({state, run}: { state: AppState, run: Run }) {
     )
 }
 
-// ---------- Claude Code 额度：插件读额度要的数据，得由 App 改 Claude Code 的设置才拿得到 ----------
+// ---------- Claude Code 额度：app 读额度要的数据，得由 App 改 Claude Code 的设置才拿得到 ----------
 
 function UsageCard({state, run}: { state: AppState, run: Run }) {
     const s = state.settings
@@ -236,7 +234,7 @@ function UsageCard({state, run}: { state: AppState, run: Run }) {
                 <CardTitle className="flex items-center gap-2"><Gauge className="size-4"/>Claude Code 额度</CardTitle>
             </CardHeader>
             <CardContent>
-                <Row title="让插件能显示 Claude Code 额度"
+                <Row title="让 app 能显示 Claude Code 额度"
                      hint="Claude Code 只把额度告诉状态栏命令，所以要把它的状态栏换成一个小脚本：先存一份数据，再交给你原来的状态栏命令，显示不变。关掉会原样还原（改之前会备份 ~/.claude/settings.json）。只有 Pro/Max 订阅才有额度；Codex 的额度不用设置。">
                     <Switch checked={s.claudeUsage} onCheckedChange={v => run(v ? '打开额度' : '关掉额度', () => SetClaudeUsage(v))}/>
                 </Row>
@@ -245,48 +243,44 @@ function UsageCard({state, run}: { state: AppState, run: Run }) {
     )
 }
 
-// ---------- 手环上的应用 ----------
+// ---------- app 列表：装到手环、更新、权限；以前版本留在手环上的旧应用 ----------
 
 const LEGACY_NAMES: Record<string, string> = {
     'dev.bysir.herdrpet': 'Agent 猫',
     'dev.bysir.herdrband': 'Agents',
+    'dev.bysir.mibandpet': 'wristkit',
 }
 
-function BandAppsCard({state, bundled, run}: { state: AppState, bundled: BundledApp[], run: Run }) {
-    const installed = new Set(state.packages ?? [])
-    // 手环上的版本和 App 里带的比：一样就不用更新；App 里的新就提示更新到哪个版本
-    const status = (b: BundledApp, has: boolean) => {
-        if (!state.connected) return '连接后显示'
-        if (!has) return `未安装 · App 里带的是 v${b.versionCode}`
-        const v = state.versions?.[b.package]
-        if (v === undefined) return '已安装'
-        if (v === b.versionCode) return `已是最新 · v${v}`
-        if (v < b.versionCode) return `手环上是 v${v}，可以更新到 v${b.versionCode}`
-        return `手环上是 v${v}，比 App 里带的 v${b.versionCode} 新`
-    }
+function AppsCard({state, run, onSelect}: { state: AppState, run: Run, onSelect: (name: string) => void }) {
+    const list = state.apps ?? []
+    const off = !state.connected || !!state.installing
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Watch className="size-4"/>手环上的应用</CardTitle>
+                <CardTitle className="flex items-center gap-2"><Watch className="size-4"/>App <span className="text-muted-foreground">{list.length}</span></CardTitle>
+                <CardDescription>每个 app 在手环上是一个单独的应用。自己写 app：把文件夹放进 app 目录，改了左边预览马上更新，装到手环上要点一下</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-                {bundled.length === 0 && <p className="text-xs text-muted-foreground">这个 App 没有打包手环应用（用 make app 构建）</p>}
-                {bundled.map(b => {
-                    const has = installed.has(b.package)
-                    const busy = state.installing === b.package
-                    const v = state.versions?.[b.package]
-                    const outdated = has && (v === undefined || v < b.versionCode)
-                    // 已经是最新（或更新）的：按钮弱一点，叫「重新安装」，手环上的应用坏了时用
+                {list.map(a => {
+                    const st = bandStatus(state, a)
+                    const busy = state.installing === a.name
                     return (
-                        <div key={b.package} className="flex flex-col gap-2">
-                            <Row title={b.name} hint={status(b, has)}>
+                        <div key={a.name} className="flex flex-col gap-2">
+                            <Row title={<span className="flex items-center gap-2">{a.title}{a.foreground && <Badge variant="secondary">手环上开着</Badge>}</span>}
+                                 hint={(a.builtin ? '内置' : shortPath(a.dir)) + ' · ' + st.text}>
                                 <div className="flex gap-2">
-                                    {has && <Button variant="outline" size="sm" disabled={!state.connected || busy}
-                                                    onClick={() => run('打开', () => Launch(b.package))}>在手环上打开</Button>}
-                                    <Button size="sm" variant={has && !outdated ? 'ghost' : 'default'} disabled={!state.connected || !!state.installing}
-                                            onClick={() => run(!has ? '安装' : outdated ? '更新' : '重新安装', () => Install(b.package))}>
-                                        {busy ? `${Math.round(state.installProgress * 100)}%` : !has ? '安装' : outdated ? `更新到 v${b.versionCode}` : '重新安装'}
+                                    {a.needGrant && <Button size="sm" onClick={() => run('允许', () => AllowApp(a.name, a.permKey))}>允许</Button>}
+                                    {!a.builtin && !a.needGrant && (a.permissions?.length ?? 0) > 0 &&
+                                        <Button variant="outline" size="sm" onClick={() => run('收回权限', () => RevokeApp(a.name))}>收回权限</Button>}
+                                    <Button variant="ghost" size="sm" onClick={() => onSelect(a.name)}>预览</Button>
+                                    {st.installed && <Button variant="outline" size="sm" disabled={off}
+                                                             onClick={() => run('打开', () => OpenApp(a.name))}>在手环上打开</Button>}
+                                    <Button size="sm" variant={st.installed && !st.outdated ? 'ghost' : 'default'} disabled={off || !!a.error}
+                                            onClick={() => run(!st.installed ? '安装' : '更新', () => InstallApp(a.name))}>
+                                        {busy ? `${Math.round(state.installProgress * 100)}%` : !st.installed ? '装到手环' : st.outdated ? '更新' : '重新安装'}
                                     </Button>
+                                    {a.builtin && <Button variant="outline" size="sm" title="把源码复制到 app 目录，改了就替换内置的这个"
+                                                          onClick={() => run('复制', () => CopyBuiltin(a.name))}>复制出来改</Button>}
                                 </div>
                             </Row>
                             {busy && (
@@ -294,59 +288,26 @@ function BandAppsCard({state, bundled, run}: { state: AppState, bundled: Bundled
                                     <div className="h-full bg-primary transition-all" style={{width: `${state.installProgress * 100}%`}}/>
                                 </div>
                             )}
+                            {!a.builtin && (a.permissions?.length ?? 0) > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                    需要权限：{a.permissions!.join('、')}{a.needGrant ? '（还没允许，这部分功能用不了）' : ''}
+                                </p>
+                            )}
+                            {a.error && <p className="max-h-32 overflow-auto whitespace-pre-wrap break-all text-xs text-destructive">{a.error}</p>}
                         </div>
                     )
                 })}
                 {(state.legacy ?? []).map(pkg => (
                     <Row key={pkg} title={<>{LEGACY_NAMES[pkg] ?? pkg} <span className="text-muted-foreground">（旧版）</span></>}
-                         hint="已经改成插件，不再推送，可以卸载">
+                         hint="以前版本装的，已经不用了，可以卸载">
                         <div className="flex gap-2">
-                            <Button variant="outline" size="sm" disabled={!state.connected || !!state.installing}
-                                    onClick={() => run('打开', () => Launch(pkg))}>在手环上打开</Button>
-                            <Button variant="destructive" size="sm" disabled={!state.connected || !!state.installing}
-                                    onClick={() => run('卸载', () => Uninstall(pkg))}>卸载</Button>
+                            <Button variant="outline" size="sm" disabled={off} onClick={() => run('打开', () => Launch(pkg))}>在手环上打开</Button>
+                            <Button variant="destructive" size="sm" disabled={off} onClick={() => run('卸载', () => Uninstall(pkg))}>卸载</Button>
                         </div>
                     </Row>
                 ))}
-            </CardContent>
-        </Card>
-    )
-}
-
-// ---------- 插件 ----------
-
-function PluginsCard({state, run, onSelect}: { state: AppState, run: Run, onSelect: (name: string) => void }) {
-    const list = state.plugins ?? []
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Puzzle className="size-4"/>插件 <span className="text-muted-foreground">{list.length}</span></CardTitle>
-                <CardDescription>自己写插件：把插件文件夹放进插件目录，保存后自动生效</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-                {list.map(p => (
-                    <div key={p.name} className="flex flex-col gap-1">
-                        <Row title={<span className="flex items-center gap-2">{p.title}{p.active && <Badge variant="secondary">手环上</Badge>}</span>}
-                             hint={p.builtin ? '内置' : shortPath(p.dir)}>
-                            <div className="flex gap-2">
-                                {p.needGrant && <Button size="sm" onClick={() => run('允许', () => AllowPlugin(p.name, p.permKey))}>允许</Button>}
-                                {!p.builtin && !p.needGrant && (p.permissions?.length ?? 0) > 0 &&
-                                    <Button variant="outline" size="sm" onClick={() => run('收回权限', () => RevokePlugin(p.name))}>收回权限</Button>}
-                                <Button variant="ghost" size="sm" onClick={() => onSelect(p.name)}>预览</Button>
-                                {p.builtin && <Button variant="outline" size="sm" title="把源码复制到插件目录，改了就替换内置的这个"
-                                                      onClick={() => run('复制', () => CopyBuiltin(p.name))}>复制出来改</Button>}
-                            </div>
-                        </Row>
-                        {!p.builtin && (p.permissions?.length ?? 0) > 0 && (
-                            <p className="text-xs text-muted-foreground">
-                                需要权限：{p.permissions!.join('、')}{p.needGrant ? '（还没允许，这部分功能用不了）' : ''}
-                            </p>
-                        )}
-                        {p.error && <p className="max-h-32 overflow-auto whitespace-pre-wrap break-all text-xs text-destructive">{p.error}</p>}
-                    </div>
-                ))}
                 <div>
-                    <Button variant="outline" size="sm" onClick={() => run('打开插件目录', OpenPluginDir)}><FolderOpen/>打开插件目录</Button>
+                    <Button variant="outline" size="sm" onClick={() => run('打开 app 目录', OpenAppDir)}><FolderOpen/>打开 app 目录</Button>
                 </div>
             </CardContent>
         </Card>

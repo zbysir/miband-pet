@@ -174,7 +174,7 @@ body {
     transition: box-shadow .15s;
 }
 
-/* 插件让手环震动时，屏幕闪一圈 */
+/* app 让手环震动时，屏幕闪一圈 */
 .preview-screen.flash {
     box-shadow: inset 0 0 0 4px #ff9f1c;
 }

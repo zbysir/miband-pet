@@ -1,16 +1,12 @@
 # wristkit 构建入口
-#   make app        构建 macOS App：server/app/build/bin/wristkit.app（包含手环上的渲染器快应用）
+#   make app        构建 macOS App：server/app/build/bin/wristkit.app（app 的编译、打包都在 App 里，不用 Node 和小米的工具）
 #   make cli        构建命令行版：server/miband
-#   make quickapps  只打包手环上的渲染器快应用（render-app/dist/*.rpk）
 #   make test       跑 Go 测试
 #   make release VERSION=0.1.0   构建 Intel / Apple 芯片通用的 App，打成 dist/wristkit-0.1.0-mac.zip（CI 发版用）
 
 WAILS ?= $(shell command -v wails 2>/dev/null || echo $(HOME)/go/bin/wails)
 
-.PHONY: app cli quickapps test release
-
-quickapps:
-	cd render-app && npm install --no-audit --no-fund && npx aiot build
+.PHONY: app cli test release
 
 # 本机签名证书（名字见 SIGN_IDENTITY）。macOS 按“标识 + 证书”记蓝牙授权：
 # 不签名的话每次构建签名都变，每次都会重新弹蓝牙授权。证书怎么建见 README。
@@ -26,11 +22,7 @@ VERSION ?=
 PLATFORM ?=
 APP_BUNDLE = server/app/build/bin/wristkit.app
 
-app: quickapps
-	# 插件预览用手环上同一份运行时
-	cp render-app/src/common/runtime.js server/app/frontend/public/runtime.js
-	rm -f server/app/rpk/*.rpk
-	cp render-app/dist/*.rpk server/app/rpk/
+app:
 	cd server/app && $(WAILS) build -clean $(if $(PLATFORM),-platform $(PLATFORM))
 	@if [ -n "$(VERSION)" ]; then \
 		/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" -c "Set :CFBundleVersion $(VERSION)" "$(APP_BUNDLE)/Contents/Info.plist"; \

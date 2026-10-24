@@ -1,10 +1,13 @@
-// miband：Mac 直连小米手环（经典蓝牙 SPP），跑插件、把界面推给手环上的渲染器。
+// miband：Mac 直连小米手环（经典蓝牙 SPP），把 app 装到手环上、给手环上的 app 推数据。
 //
-//	miband app                 常驻：跑插件（Agent 猫和用户插件；Agent 猫会在 agent 跑完/卡住时提醒）
+//	miband app                 常驻：跑 app 在 Mac 上的部分、给手环上开着的 app 推数据（Agent 猫会在 agent 跑完/卡住时提醒）
 //	miband notify 标题 [正文]   发一条通知
 //	miband apps                列出手环上的第三方快应用
 //	miband install <rpk>       安装快应用并打开
-//	miband launch [包名]        打开快应用（默认渲染器）
+//	miband pack <目录> <rpk>     把 wristkit app 目录（manifest.json + index.ux）或快应用源码目录（manifest.json、app.ux、pages/…）
+//	                           编译打包成安装包，不用 aiot-toolkit
+//	miband launch <包名>        打开快应用
+//	miband remove <包名>        卸载快应用
 //	miband key                 扫码登录小米账号，拉手环的 auth key 和地址写进配置
 //
 // 配置 config.json：{"auth_key": "0x…", "address": "AA:BB:CC:DD:EE:FF", "notify": true, "notify_start": true, "alert": "auto"}
@@ -23,7 +26,10 @@ import (
 	"syscall"
 	"time"
 
+	"miband/internal/bandapp"
 	"miband/internal/bt"
+	"miband/internal/quickapp"
+	"miband/internal/rpk"
 	"miband/internal/service"
 	"miband/internal/xiaomi"
 )
@@ -36,7 +42,7 @@ func run() int {
 	configPath := flag.String("config", "", "配置文件路径（默认找 ./config.json，再找可执行文件上一级目录）")
 	verbose := flag.Bool("v", false, "打印调试日志")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "用法: miband [-config path] [-v] <app|notify|apps|install|launch|key> ...")
+		fmt.Fprintln(os.Stderr, "用法: miband [-config path] [-v] <app|notify|apps|install|remove|launch|pack|key> ...")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -50,6 +56,28 @@ func run() int {
 	if len(args) == 0 {
 		flag.Usage()
 		return 2
+	}
+	if args[0] == "pack" {
+		if len(args) < 3 {
+			fatal(errors.New("用法: miband pack <源码目录> <rpk>"))
+		}
+		var data []byte
+		var err error
+		if _, statErr := os.Stat(filepath.Join(args[1], "index.ux")); statErr == nil {
+			data, _, err = bandapp.BuildDir(os.DirFS(args[1]))
+		} else {
+			var s *rpk.Signer
+			if s, err = quickapp.DebugSigner(); err == nil {
+				data, _, err = quickapp.Build(os.DirFS(args[1]), s)
+			}
+		}
+		if err == nil {
+			err = os.WriteFile(args[2], data, 0o644)
+		}
+		if err != nil {
+			fatal(err)
+		}
+		return 0
 	}
 	if args[0] == "key" {
 		// 不需要已有配置：拉到 key 后写配置
@@ -92,16 +120,27 @@ func run() int {
 			return err
 		})
 	case "launch":
-		pkg := service.PackageRender
-		if len(args) > 1 {
-			pkg = args[1]
+		if len(args) < 2 {
+			fatal(errors.New("用法: miband launch <包名>"))
 		}
+		pkg := args[1]
 		err = withDevice(ctx, cfg, func(_ *xiaomi.Device, apps *xiaomi.Apps) error {
 			if err := apps.Launch(pkg, ""); err != nil {
 				return err
 			}
 			time.Sleep(time.Second)
 			fmt.Println("已打开", pkg)
+			return nil
+		})
+	case "remove":
+		if len(args) < 2 {
+			fatal(errors.New("用法: miband remove <包名>"))
+		}
+		err = withDevice(ctx, cfg, func(_ *xiaomi.Device, apps *xiaomi.Apps) error {
+			if err := apps.Remove(args[1]); err != nil {
+				return err
+			}
+			fmt.Println("已卸载", args[1])
 			return nil
 		})
 	case "install":

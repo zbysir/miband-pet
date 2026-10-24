@@ -1,0 +1,8 @@
+{
+  "name": "wristkit-ux-oracle",
+  "private": true,
+  "description": "小米的 aiot-toolkit，只给 tools/ux-oracle.sh 生成 .ux 编译器的标准答案用（npm install 后才能跑）",
+  "devDependencies": {
+    "aiot-toolkit": "^2.0.5"
+  }
+}

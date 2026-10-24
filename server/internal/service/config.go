@@ -12,14 +12,14 @@ import (
 type Config struct {
 	AuthKey string `json:"auth_key"`
 	Address string `json:"address"`
-	// 菜单栏的猫：orange（橘猫，默认）/ gray（灰猫，中华田园猫）/ white（白猫，美短）。手环上的猫是 Agent 猫插件自己的配置
+	// 菜单栏的猫：orange（橘猫，默认）/ gray（灰猫，中华田园猫）/ white（白猫，美短）。手环上的猫是 Agent 猫自己的配置
 	Pet string `json:"pet,omitempty"`
-	// 用户允许过的插件权限：插件名 → 当时的权限（plugin.Permissions.Key()），权限变了要重新允许
+	// 用户允许过的 app 权限：app 名 → 当时的权限（bandapp.Permissions.Key()），权限变了要重新允许
 	PluginGrants map[string]string `json:"plugin_grants,omitempty"`
-	// 用户在 App 里改过的插件配置：插件名 → 配置项 → 值（插件在 manifest.json 的 settings 里声明有哪些）
+	// 用户在 App 里改过的 app 配置：app 名 → 配置项 → 值（app 在 manifest.json 的 settings 里声明有哪些）
 	PluginConfig map[string]map[string]any `json:"plugin_config,omitempty"`
 
-	// 以下是旧版的提醒设置，现在是 Agent 猫插件的配置；读到了就搬过去（MigrateLegacy），不再写回
+	// 以下是旧版的提醒设置，现在是 Agent 猫的配置；读到了就搬过去（MigrateLegacy），不再写回
 	Notify       *bool  `json:"notify,omitempty"`
 	NotifyStart  *bool  `json:"notify_start,omitempty"`
 	Alert        string `json:"alert,omitempty"`
@@ -28,7 +28,7 @@ type Config struct {
 	ImpatientMin *int   `json:"impatient_min,omitempty"`
 }
 
-// MigrateLegacy 把旧版的提醒设置搬进 Agent 猫插件的配置（插件里已经改过的不覆盖），返回有没有改动。
+// MigrateLegacy 把旧版的提醒设置搬进 Agent 猫的配置（已经改过的不覆盖），返回有没有改动。
 func (c *Config) MigrateLegacy() bool {
 	old := map[string]any{}
 	switch {
@@ -45,7 +45,7 @@ func (c *Config) MigrateLegacy() bool {
 	if c.KeepAwake {
 		old["keepAwake"] = true
 	}
-	// 数字用 float64，和从 config.json 读出来的一样（插件配置的校验只认这个）
+	// 数字用 float64，和从 config.json 读出来的一样（app 配置的校验只认这个）
 	if c.KeepAwakeSec > 0 {
 		old["keepAwakeSec"] = float64(c.KeepAwakeSec)
 	}

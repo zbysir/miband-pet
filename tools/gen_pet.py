@@ -1,4 +1,4 @@
-"""手绘像素猫的动作帧，输出到 Agent 猫插件的 server/plugins/agent-cat/assets/<皮肤>/<状态>_<序号>.png。
+"""手绘像素猫的动作帧，输出到 Agent 猫的 server/apps/agent-cat/assets/<皮肤>/<状态>_<序号>.png。
 插件宿主按图片内容哈希推到手环，换了图会自动推新的，不用管手环缓存。
 
 猫本身是一张字符格子图（BASE），每个字符一个像素：
@@ -21,10 +21,11 @@ from PIL import Image, ImageDraw
 
 GRID = 40
 SCALE = 4
-OUT = os.environ.get("PET_OUT") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server", "plugins", "agent-cat", "assets")
+OUT = os.environ.get("PET_OUT") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server", "apps", "agent-cat", "assets")
 # App 自己的一套（菜单栏图标、连接向导里的猫），和插件的分开放，只要用到的几种动作
 APP_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server", "app", "frontend", "public", "pet")
 APP_STATES = ("sleep", "work", "celebrate")
+APP_SKINS = ("orange", "gray", "white")  # Mac App 菜单栏、连接向导用的猫；Clawd 只在手环上
 
 # 坐着的猫，正面（28 列 × 28 行），左右对称（第 c 列 ↔ 第 24-c 列）。尾巴不在格子图里，见 draw_tail。
 # 第 0~17 行是头，21 格宽（第 2~22 列）：小耳朵，耳朵内侧斜线直接接到平的头顶（中间不要拱起）；
@@ -241,15 +242,97 @@ def sleep_frames(pal):
     return out
 
 
+# ---------- Clawd：Claude Code 的吉祥物 ----------
+# 不是猫，单独画：一块扁方的橙色身子，两只竖条眼睛，左右两只小短手，底下四条小短腿，不描边。
+# 照着 Claude Code 欢迎界面里的字符画（▐▛███▜▌ / ▝▜█████▛▘ / ▘▘ ▝▝）放大：身子 24×16，手 4×4，腿 2×4。
+# 左右对称，中线在 x=19.5。没有尾巴、没有嘴；表情只换眼睛，动作靠挪手和整只上下跳。
+CLAWD = {"F": (217, 119, 87), "E": (24, 18, 16)}
+CLAWD_EYES = {  # 相对左眼左上角 (12, 20) 的点，右眼平移 14 格
+    "open": [(x, y) for x in (0, 1) for y in range(4)],
+    "wide": [(x, y) for x in (0, 1) for y in range(-1, 4)],  # 更高：吃惊
+    "focus": [(x, y) for x in (0, 1) for y in (2, 3)],  # 往下看屏幕
+    "happy": [(0, 1), (1, 1), (-1, 2), (2, 2)],  # ^ ^
+    "closed": [(x, 3) for x in range(-1, 3)],  # 一道线
+}
+
+
+def draw_clawd(img, dy=0, eyes="open", arms=(0, 0)):
+    # arms：左右手相对平常位置往上挪几格（负数往下）
+    d = ImageDraw.Draw(img)
+    rect(d, 8, 16 + dy, 31, 31 + dy, CLAWD["F"])
+    for x in (10, 14, 24, 28):
+        rect(d, x, 32 + dy, x + 1, 35 + dy, CLAWD["F"])
+    for x, up in ((4, arms[0]), (32, arms[1])):
+        rect(d, x, 24 + dy - up, x + 3, 27 + dy - up, CLAWD["F"])
+    for ex in (12, 26):
+        for x, y in CLAWD_EYES[eyes]:
+            img.putpixel((ex + x, 20 + dy + y), CLAWD["E"] + (255,))
+
+
+def clawd_work_frames():
+    out = []
+    for i in range(6):
+        img = new_frame()
+        dy = 1 if i in (2, 3) else 0
+        draw_clawd(img, dy, "focus", (1, 0) if i % 2 == 0 else (0, 1))  # 两只手轮流敲
+        draw_laptop(ImageDraw.Draw(img), glow=i % 3 != 2)
+        out.append(finish(img))
+    return out
+
+
+def clawd_alert_frames():
+    out = []
+    for i, dy in enumerate([0, -2, -3, -2, 0, 0]):
+        img = new_frame()
+        draw_sign(ImageDraw.Draw(img), dy, wobble=0)  # 牌子杆正好立在右手上，像举着
+        draw_clawd(img, dy, "wide", (1 if i % 2 else 0, 0))
+        out.append(finish(img))
+    return out
+
+
+def clawd_celebrate_frames():
+    rnd = random.Random(7)
+    out = []
+    for i, dy in enumerate([0, -1, -2, -1, 0, 0]):
+        bits = [(rnd.randrange(1, 39), rnd.randrange(0, 6), rnd.choice(CONFETTI)) for _ in range(14)]
+        img = new_frame()
+        up = 4 if i % 2 else 2  # 两只手一起往上挥
+        draw_clawd(img, dy, "happy", (up, up))
+        d = ImageDraw.Draw(img)
+        for x, y, c in bits:
+            fy = y + (i * 2) % 6
+            rect(d, x, fy, x + 1, fy, c)
+        out.append(finish(img))
+    return out
+
+
+def clawd_sleep_frames():
+    out = []
+    for i in range(8):
+        img = new_frame()
+        dy = 1 if i % 4 in (1, 2) else 0
+        draw_clawd(img, dy, "closed", (-1, -1))  # 手垂下来一点
+        d = ImageDraw.Draw(img)
+        k = i % 4
+        draw_z(d, 31, 10 - k * 2, 3)
+        if k >= 2:
+            draw_z(d, 34, 4 - (k - 2) * 2, 4)
+        out.append(finish(img))
+    return out
+
+
 STATES = {"work": work_frames, "alert": alert_frames, "celebrate": celebrate_frames, "sleep": sleep_frames}
+
+
+CLAWD_STATES = {"work": clawd_work_frames, "alert": clawd_alert_frames, "celebrate": clawd_celebrate_frames, "sleep": clawd_sleep_frames}
 
 
 def main():
     rows, files = [], {}
-    for skin, pal in SKINS.items():
+    for skin in list(SKINS) + ["clawd"]:
         row = []
-        for state, fn in STATES.items():
-            frames = fn(pal)
+        for state in STATES:
+            frames = CLAWD_STATES[state]() if skin == "clawd" else STATES[state](SKINS[skin])
             for i, img in enumerate(frames):
                 buf = io.BytesIO()
                 img.save(buf, format="PNG", optimize=True)
@@ -257,11 +340,12 @@ def main():
             row.append(frames)
         rows.append(row)
 
-    for out, keep in ((OUT, None), (APP_OUT, APP_STATES)):
-        for skin in SKINS:  # 删掉旧帧（比如帧数变少时多出来的）
+    for out, skins, keep in ((OUT, None, None), (APP_OUT, APP_SKINS, APP_STATES)):
+        for skin in skins or list(SKINS) + ["clawd"]:  # 删掉旧帧（比如帧数变少时多出来的）
             shutil.rmtree(os.path.join(out, skin), ignore_errors=True)
         for name, data in files.items():
-            if keep and name.split("/")[1].split("_")[0] not in keep:
+            skin, file = name.split("/")
+            if (skins and skin not in skins) or (keep and file.split("_")[0] not in keep):
                 continue
             path = os.path.join(out, name)
             os.makedirs(os.path.dirname(path), exist_ok=True)
