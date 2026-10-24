@@ -13,6 +13,10 @@
 
 > 非小米官方项目。用的是逆向出来的非官方协议（移植自 Gadgetbridge、OronBox），风险自负。许可证 AGPL-3.0，致谢见 [NOTICE.md](NOTICE.md)。
 
+## 如何自己做插件
+
+让 AI（Claude Code、Codex 等）先读 https://github.com/zbysir/wristkit/blob/main/skills/wristkit-plugin/SKILL.md ，再告诉它你想在手环上看到什么。
+
 ## 需要什么
 
 - 一台 Mac。
