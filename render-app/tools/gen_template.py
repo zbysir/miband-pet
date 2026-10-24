@@ -6,11 +6,12 @@
     python3 render-app/tools/gen_template.py
 
 节点字段（插件运行时 src/common/runtime.js 生成）：
-    t  类型：v=view（div）  x=text  m=image  a=sprite（image-animator）
+    t  类型：v=view（div）  x=text  m=image  a=sprite（也画成 image，页面自己定时换 u 播帧，见 index.ux 的 startSprites）
        w=pager（swiper，子节点是一页一页）。只能是根节点：每层都多一种容器的话模板会成倍变大
     i  节点 id，同时用作元素 id 和事件回传
+    k  复用元素用的 key（tid），页面补上：平时等于 i，要重建元素时换新的
     s  整串 style
-    c  子节点（只有 view 有）
+    c  子节点（只有 view 有）。页面上的树里每个子节点包在槽 {k, w: [节点]} 里（见 level）
     x  文字    u  图片地址    f  动画帧 [{src}]    d  动画时长
     e  事件位：1=click  2=longpress  4=change（pager 翻页）
     vt pager 是不是纵向    ix pager 当前第几页
@@ -29,11 +30,11 @@ def events(n):
 
 
 def leaves(n, ind):
-    """非 view 的节点：text / image / sprite，用 elif 接在 view 后面"""
+    """非 view 的节点：text / image / sprite，用 elif 接在 view 后面。
+    sprite 不用 image-animator：小米手环 9 Pro 上页面开着时拆掉一个 image-animator（换动画、切插件）整个手环会重启"""
     return [
         f'{ind}<text elif="{{{{{n}.t === \'x\'}}}}" id="{{{{{n}.i}}}}" style="{{{{{n}.s}}}}" {events(n)}>{{{{{n}.x}}}}</text>',
-        f'{ind}<image elif="{{{{{n}.t === \'m\'}}}}" id="{{{{{n}.i}}}}" style="{{{{{n}.s}}}}" src="{{{{{n}.u}}}}" {events(n)}></image>',
-        f'{ind}<image-animator elif="{{{{{n}.t === \'a\'}}}}" id="{{{{{n}.i}}}}" style="{{{{{n}.s}}}}" images="{{{{{n}.f}}}}" duration="{{{{{n}.d}}}}"></image-animator>',
+        f'{ind}<image elif="{{{{{n}.t === \'m\' || {n}.t === \'a\'}}}}" id="{{{{{n}.i}}}}" style="{{{{{n}.s}}}}" src="{{{{{n}.u}}}}" {events(n)}></image>',
     ]
 
 
@@ -48,8 +49,13 @@ def swiper_attrs(n):
 def level(parent, depth, ind):
     """parent 的子节点；depth 是子节点所在的层（根是第 0 层）"""
     n = f"n{depth}"
-    # tid：按节点 id 复用元素；id 变了（比如猫换了动作）就新建元素，动画从头播
-    out = [f'{ind}<block for="{{{{{n} in {parent}.c}}}}" tid="i">']
+    slot = f"s{depth}"
+    # 子节点列表里放的是「槽」{k, w: [节点]}，每个槽里再套一层只装一个节点的列表（block 不产生元素，不影响排版）。
+    # 页面要重建某个节点时（见 index.ux 的 patch）只换掉它所在槽的 w，框架只重新比这个单元素列表，
+    # 不用把整层兄弟节点重新过一遍（9 Pro 上整层重比一次要几百毫秒）。
+    # tid：按 k 复用元素。槽的 k 是节点 id；节点的 k 平时也是 id，要重建时换新的
+    out = [f'{ind}<block for="{{{{{slot} in {parent}.c}}}}" tid="k">', f'{ind}  <block for="{{{{{n} in {slot}.w}}}}" tid="k">']
+    ind = ind + "  "
     inner = ind + "  "
     if depth < DEPTH - 1:
         out.append(f'{inner}<div if="{{{{{n}.t === \'v\'}}}}" id="{{{{{n}.i}}}}" style="{{{{{n}.s}}}}" {events(n)}>')
@@ -60,6 +66,7 @@ def level(parent, depth, ind):
         out.append(f'{inner}<div if="{{{{{n}.t === \'v\'}}}}" id="{{{{{n}.i}}}}" style="{{{{{n}.s}}}}" {events(n)}></div>')
     out += leaves(n, inner)
     out.append(f"{ind}</block>")
+    out.append(f"{ind[:-2]}</block>")
     return out
 
 

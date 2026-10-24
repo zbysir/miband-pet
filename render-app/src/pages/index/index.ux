@@ -2,75 +2,85 @@
   <!-- tools/gen_template.py 生成，不要手改 -->
   <div class="page" style="height: {{pageH}}px" @swipe="onSwipe">
     <div if="{{root && root.t !== 'w'}}" id="{{root.i}}" style="{{root.s}}" @click="tap(root.i, root.e)" @longpress="hold(root.i, root.e)">
-      <block for="{{n1 in root.c}}" tid="i">
-        <div if="{{n1.t === 'v'}}" id="{{n1.i}}" style="{{n1.s}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)">
-          <block for="{{n2 in n1.c}}" tid="i">
-            <div if="{{n2.t === 'v'}}" id="{{n2.i}}" style="{{n2.s}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)">
-              <block for="{{n3 in n2.c}}" tid="i">
-                <div if="{{n3.t === 'v'}}" id="{{n3.i}}" style="{{n3.s}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)">
-                  <block for="{{n4 in n3.c}}" tid="i">
-                    <div if="{{n4.t === 'v'}}" id="{{n4.i}}" style="{{n4.s}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)">
-                      <block for="{{n5 in n4.c}}" tid="i">
-                        <div if="{{n5.t === 'v'}}" id="{{n5.i}}" style="{{n5.s}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)"></div>
-                        <text elif="{{n5.t === 'x'}}" id="{{n5.i}}" style="{{n5.s}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)">{{n5.x}}</text>
-                        <image elif="{{n5.t === 'm'}}" id="{{n5.i}}" style="{{n5.s}}" src="{{n5.u}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)"></image>
-                        <image-animator elif="{{n5.t === 'a'}}" id="{{n5.i}}" style="{{n5.s}}" images="{{n5.f}}" duration="{{n5.d}}"></image-animator>
-                      </block>
-                    </div>
-                    <text elif="{{n4.t === 'x'}}" id="{{n4.i}}" style="{{n4.s}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)">{{n4.x}}</text>
-                    <image elif="{{n4.t === 'm'}}" id="{{n4.i}}" style="{{n4.s}}" src="{{n4.u}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)"></image>
-                    <image-animator elif="{{n4.t === 'a'}}" id="{{n4.i}}" style="{{n4.s}}" images="{{n4.f}}" duration="{{n4.d}}"></image-animator>
+      <block for="{{s1 in root.c}}" tid="k">
+        <block for="{{n1 in s1.w}}" tid="k">
+          <div if="{{n1.t === 'v'}}" id="{{n1.i}}" style="{{n1.s}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)">
+            <block for="{{s2 in n1.c}}" tid="k">
+              <block for="{{n2 in s2.w}}" tid="k">
+                <div if="{{n2.t === 'v'}}" id="{{n2.i}}" style="{{n2.s}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)">
+                  <block for="{{s3 in n2.c}}" tid="k">
+                    <block for="{{n3 in s3.w}}" tid="k">
+                      <div if="{{n3.t === 'v'}}" id="{{n3.i}}" style="{{n3.s}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)">
+                        <block for="{{s4 in n3.c}}" tid="k">
+                          <block for="{{n4 in s4.w}}" tid="k">
+                            <div if="{{n4.t === 'v'}}" id="{{n4.i}}" style="{{n4.s}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)">
+                              <block for="{{s5 in n4.c}}" tid="k">
+                                <block for="{{n5 in s5.w}}" tid="k">
+                                  <div if="{{n5.t === 'v'}}" id="{{n5.i}}" style="{{n5.s}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)"></div>
+                                  <text elif="{{n5.t === 'x'}}" id="{{n5.i}}" style="{{n5.s}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)">{{n5.x}}</text>
+                                  <image elif="{{n5.t === 'm' || n5.t === 'a'}}" id="{{n5.i}}" style="{{n5.s}}" src="{{n5.u}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)"></image>
+                                </block>
+                              </block>
+                            </div>
+                            <text elif="{{n4.t === 'x'}}" id="{{n4.i}}" style="{{n4.s}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)">{{n4.x}}</text>
+                            <image elif="{{n4.t === 'm' || n4.t === 'a'}}" id="{{n4.i}}" style="{{n4.s}}" src="{{n4.u}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)"></image>
+                          </block>
+                        </block>
+                      </div>
+                      <text elif="{{n3.t === 'x'}}" id="{{n3.i}}" style="{{n3.s}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)">{{n3.x}}</text>
+                      <image elif="{{n3.t === 'm' || n3.t === 'a'}}" id="{{n3.i}}" style="{{n3.s}}" src="{{n3.u}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)"></image>
+                    </block>
                   </block>
                 </div>
-                <text elif="{{n3.t === 'x'}}" id="{{n3.i}}" style="{{n3.s}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)">{{n3.x}}</text>
-                <image elif="{{n3.t === 'm'}}" id="{{n3.i}}" style="{{n3.s}}" src="{{n3.u}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)"></image>
-                <image-animator elif="{{n3.t === 'a'}}" id="{{n3.i}}" style="{{n3.s}}" images="{{n3.f}}" duration="{{n3.d}}"></image-animator>
+                <text elif="{{n2.t === 'x'}}" id="{{n2.i}}" style="{{n2.s}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)">{{n2.x}}</text>
+                <image elif="{{n2.t === 'm' || n2.t === 'a'}}" id="{{n2.i}}" style="{{n2.s}}" src="{{n2.u}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)"></image>
               </block>
-            </div>
-            <text elif="{{n2.t === 'x'}}" id="{{n2.i}}" style="{{n2.s}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)">{{n2.x}}</text>
-            <image elif="{{n2.t === 'm'}}" id="{{n2.i}}" style="{{n2.s}}" src="{{n2.u}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)"></image>
-            <image-animator elif="{{n2.t === 'a'}}" id="{{n2.i}}" style="{{n2.s}}" images="{{n2.f}}" duration="{{n2.d}}"></image-animator>
-          </block>
-        </div>
-        <text elif="{{n1.t === 'x'}}" id="{{n1.i}}" style="{{n1.s}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)">{{n1.x}}</text>
-        <image elif="{{n1.t === 'm'}}" id="{{n1.i}}" style="{{n1.s}}" src="{{n1.u}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)"></image>
-        <image-animator elif="{{n1.t === 'a'}}" id="{{n1.i}}" style="{{n1.s}}" images="{{n1.f}}" duration="{{n1.d}}"></image-animator>
+            </block>
+          </div>
+          <text elif="{{n1.t === 'x'}}" id="{{n1.i}}" style="{{n1.s}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)">{{n1.x}}</text>
+          <image elif="{{n1.t === 'm' || n1.t === 'a'}}" id="{{n1.i}}" style="{{n1.s}}" src="{{n1.u}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)"></image>
+        </block>
       </block>
     </div>
     <swiper elif="{{root}}" id="{{root.i}}" style="{{root.s}}" vertical="{{root.vt}}" loop="false" indicator="false" @change="pageChange(root.i, root.e)">
-      <block for="{{n1 in root.c}}" tid="i">
-        <div if="{{n1.t === 'v'}}" id="{{n1.i}}" style="{{n1.s}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)">
-          <block for="{{n2 in n1.c}}" tid="i">
-            <div if="{{n2.t === 'v'}}" id="{{n2.i}}" style="{{n2.s}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)">
-              <block for="{{n3 in n2.c}}" tid="i">
-                <div if="{{n3.t === 'v'}}" id="{{n3.i}}" style="{{n3.s}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)">
-                  <block for="{{n4 in n3.c}}" tid="i">
-                    <div if="{{n4.t === 'v'}}" id="{{n4.i}}" style="{{n4.s}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)">
-                      <block for="{{n5 in n4.c}}" tid="i">
-                        <div if="{{n5.t === 'v'}}" id="{{n5.i}}" style="{{n5.s}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)"></div>
-                        <text elif="{{n5.t === 'x'}}" id="{{n5.i}}" style="{{n5.s}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)">{{n5.x}}</text>
-                        <image elif="{{n5.t === 'm'}}" id="{{n5.i}}" style="{{n5.s}}" src="{{n5.u}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)"></image>
-                        <image-animator elif="{{n5.t === 'a'}}" id="{{n5.i}}" style="{{n5.s}}" images="{{n5.f}}" duration="{{n5.d}}"></image-animator>
-                      </block>
-                    </div>
-                    <text elif="{{n4.t === 'x'}}" id="{{n4.i}}" style="{{n4.s}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)">{{n4.x}}</text>
-                    <image elif="{{n4.t === 'm'}}" id="{{n4.i}}" style="{{n4.s}}" src="{{n4.u}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)"></image>
-                    <image-animator elif="{{n4.t === 'a'}}" id="{{n4.i}}" style="{{n4.s}}" images="{{n4.f}}" duration="{{n4.d}}"></image-animator>
+      <block for="{{s1 in root.c}}" tid="k">
+        <block for="{{n1 in s1.w}}" tid="k">
+          <div if="{{n1.t === 'v'}}" id="{{n1.i}}" style="{{n1.s}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)">
+            <block for="{{s2 in n1.c}}" tid="k">
+              <block for="{{n2 in s2.w}}" tid="k">
+                <div if="{{n2.t === 'v'}}" id="{{n2.i}}" style="{{n2.s}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)">
+                  <block for="{{s3 in n2.c}}" tid="k">
+                    <block for="{{n3 in s3.w}}" tid="k">
+                      <div if="{{n3.t === 'v'}}" id="{{n3.i}}" style="{{n3.s}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)">
+                        <block for="{{s4 in n3.c}}" tid="k">
+                          <block for="{{n4 in s4.w}}" tid="k">
+                            <div if="{{n4.t === 'v'}}" id="{{n4.i}}" style="{{n4.s}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)">
+                              <block for="{{s5 in n4.c}}" tid="k">
+                                <block for="{{n5 in s5.w}}" tid="k">
+                                  <div if="{{n5.t === 'v'}}" id="{{n5.i}}" style="{{n5.s}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)"></div>
+                                  <text elif="{{n5.t === 'x'}}" id="{{n5.i}}" style="{{n5.s}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)">{{n5.x}}</text>
+                                  <image elif="{{n5.t === 'm' || n5.t === 'a'}}" id="{{n5.i}}" style="{{n5.s}}" src="{{n5.u}}" @click="tap(n5.i, n5.e)" @longpress="hold(n5.i, n5.e)"></image>
+                                </block>
+                              </block>
+                            </div>
+                            <text elif="{{n4.t === 'x'}}" id="{{n4.i}}" style="{{n4.s}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)">{{n4.x}}</text>
+                            <image elif="{{n4.t === 'm' || n4.t === 'a'}}" id="{{n4.i}}" style="{{n4.s}}" src="{{n4.u}}" @click="tap(n4.i, n4.e)" @longpress="hold(n4.i, n4.e)"></image>
+                          </block>
+                        </block>
+                      </div>
+                      <text elif="{{n3.t === 'x'}}" id="{{n3.i}}" style="{{n3.s}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)">{{n3.x}}</text>
+                      <image elif="{{n3.t === 'm' || n3.t === 'a'}}" id="{{n3.i}}" style="{{n3.s}}" src="{{n3.u}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)"></image>
+                    </block>
                   </block>
                 </div>
-                <text elif="{{n3.t === 'x'}}" id="{{n3.i}}" style="{{n3.s}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)">{{n3.x}}</text>
-                <image elif="{{n3.t === 'm'}}" id="{{n3.i}}" style="{{n3.s}}" src="{{n3.u}}" @click="tap(n3.i, n3.e)" @longpress="hold(n3.i, n3.e)"></image>
-                <image-animator elif="{{n3.t === 'a'}}" id="{{n3.i}}" style="{{n3.s}}" images="{{n3.f}}" duration="{{n3.d}}"></image-animator>
+                <text elif="{{n2.t === 'x'}}" id="{{n2.i}}" style="{{n2.s}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)">{{n2.x}}</text>
+                <image elif="{{n2.t === 'm' || n2.t === 'a'}}" id="{{n2.i}}" style="{{n2.s}}" src="{{n2.u}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)"></image>
               </block>
-            </div>
-            <text elif="{{n2.t === 'x'}}" id="{{n2.i}}" style="{{n2.s}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)">{{n2.x}}</text>
-            <image elif="{{n2.t === 'm'}}" id="{{n2.i}}" style="{{n2.s}}" src="{{n2.u}}" @click="tap(n2.i, n2.e)" @longpress="hold(n2.i, n2.e)"></image>
-            <image-animator elif="{{n2.t === 'a'}}" id="{{n2.i}}" style="{{n2.s}}" images="{{n2.f}}" duration="{{n2.d}}"></image-animator>
-          </block>
-        </div>
-        <text elif="{{n1.t === 'x'}}" id="{{n1.i}}" style="{{n1.s}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)">{{n1.x}}</text>
-        <image elif="{{n1.t === 'm'}}" id="{{n1.i}}" style="{{n1.s}}" src="{{n1.u}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)"></image>
-        <image-animator elif="{{n1.t === 'a'}}" id="{{n1.i}}" style="{{n1.s}}" images="{{n1.f}}" duration="{{n1.d}}"></image-animator>
+            </block>
+          </div>
+          <text elif="{{n1.t === 'x'}}" id="{{n1.i}}" style="{{n1.s}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)">{{n1.x}}</text>
+          <image elif="{{n1.t === 'm' || n1.t === 'a'}}" id="{{n1.i}}" style="{{n1.s}}" src="{{n1.u}}" @click="tap(n1.i, n1.e)" @longpress="hold(n1.i, n1.e)"></image>
+        </block>
       </block>
     </swiper>
     <text if="{{!root}}" class="empty">{{connected ? '加载中…' : '等待 Mac 连接…'}}</text>
@@ -137,7 +147,7 @@ function messageTree(title, msg, color) {
 //   depth   View 嵌套几层（根算第 1 层）
 //   nested  根以外有没有 Pager（模板里只给根节点留了 swiper）
 //   images  用到的图片哈希
-//   sprites 动画节点 {id: 帧签名}
+//   sprites 动画节点 {id: {sig: 帧签名, frames: [图片地址], ms: 一轮多久}}
 function scan(tree) {
   const out = { depth: 0, nested: false, images: [], sprites: {} }
   const image = (src) => {
@@ -148,7 +158,10 @@ function scan(tree) {
     image(n.u)
     if (n.f) {
       n.f.forEach((f) => image(f.src))
-      if (n.t === 'a') out.sprites[n.i] = n.f.map((f) => f.src).join(',') + '|' + n.d
+      if (n.t === 'a') {
+        const frames = n.f.map((f) => f.src)
+        out.sprites[n.i] = { sig: frames.join(',') + '|' + n.d, frames, ms: durationMs(n.d) }
+      }
     }
     ;(n.c || []).forEach((c) => {
       if (c.t === 'w') out.nested = true
@@ -159,16 +172,56 @@ function scan(tree) {
   return out
 }
 
+// '900ms' / '1.5s' / 900 → 毫秒
+function durationMs(d) {
+  const v = parseFloat(d) || 1000
+  return /[^m]s$/.test(String(d)) ? v * 1000 : v
+}
+
 // 每个节点都带上全部字段：页面上的树是响应式的，事后才加的字段不会触发更新（patch 只改已有字段）
 const EMPTY = { s: '', x: '', u: '', f: [], d: '', e: 0, vt: true, ix: 0, c: [] }
 // 页面上每个节点（按 id）上次是照着插件交来的哪个对象画的。插件运行时复用没变的组件时交来的是同一个对象，
 // 一样就整棵子树跳过不比
 let SRC = {}
-function normalize(n) {
+// 页面上的节点对象（按 id），播动画时改它的 u
+let NODES = {}
+// k：模板里按它复用元素（tid）。平时就是 id；要重建元素时换一个新的 k
+let KSEQ = 0
+let NEWN = 0 // 这次画树新建了几个节点（点击日志用）
+// 样式变了的节点要不要重建（见 patch）：只有小米手环 9 Pro 要，layout() 里按手环型号设
+let REBUILD = false
+function normalize(n, k) {
+  NEWN++
   SRC[n.i] = n
   const out = Object.assign({}, EMPTY, n)
-  out.c = (n.c || []).map(normalize)
+  out.k = k || n.i
+  if (n.t === 'a') out.u = n.f && n.f.length > 0 ? n.f[0].src : ''
+  out.c = (n.c || []).map((c) => slot(normalize(c)))
+  NODES[n.i] = out
   return out
+}
+
+// 样式串 a 变成 b 要改的那几项（'k:v;k:v'）；b 里去掉了 a 的某项时返回 null
+function styleDelta(a, b) {
+  const parse = (str) => {
+    const m = {}
+    str.split(';').forEach((part) => {
+      const i = part.indexOf(':')
+      if (i > 0) m[part.slice(0, i)] = part.slice(i + 1)
+    })
+    return m
+  }
+  const ma = parse(a)
+  const mb = parse(b)
+  for (const k in ma) if (!(k in mb)) return null
+  const out = []
+  for (const k in mb) if (ma[k] !== mb[k]) out.push(k + ':' + mb[k])
+  return out.join(';')
+}
+
+// 子节点放在槽里，重建节点时只换槽里的 w（见 tools/gen_template.py 的 level）
+function slot(node) {
+  return { k: node.i, w: [node] }
 }
 
 function sameFrames(a, b) {
@@ -177,30 +230,49 @@ function sameFrames(a, b) {
   return true
 }
 
-// 把插件新交的树（字段不全）的变化写进页面上正在画的树（字段齐全）：只改变了的字段，框架只更新这些绑定，
-// 元素（包括正在播的动画）不重建。缺的字段当默认值比，不用先把整棵新树补全一遍。
-// 子节点的 id 和顺序都没变就逐个比，否则整段子节点换掉（这时才补全）
-const FIELDS = ['s', 'x', 'u', 'd', 'e', 'vt', 'ix']
+// 把插件新交的树（字段不全）的变化写进页面上正在画的树（字段齐全），返回放在这个位置的节点。
+// 只改变了的字段，框架只更新这些绑定。缺的字段当默认值比，不用先把整棵新树补全一遍。
+// 小米手环 9 Pro 上样式变了的节点不在原元素上改，整个重建（换新的 k，返回新节点）：9 Pro 上改了已经画出来的元素的样式，
+// 之后别处的文字一变排版就乱（元素挤到页面顶上，重新打开页面才好）；新建的元素排版是对的。
+// 子节点按 id 对上：对上的接着比，新出现的补全
+const FIELDS = ['x', 'u', 'd', 'e', 'vt', 'ix']
 function patch(old, neu) {
-  if (SRC[old.i] === neu) return
+  if (SRC[old.i] === neu) return old
+  const s = neu.s === undefined ? EMPTY.s : neu.s
+  const full = old.fs === undefined ? old.s : old.fs
+  if (full !== s) {
+    if (REBUILD) {
+      // 9 Pro：只把变了的几项写进绑定的样式（框架只设这几项，排版属性不动）；有属性被去掉的没法这样表达，整个重建
+      const delta = styleDelta(full, s)
+      if (delta === null) return normalize(neu, neu.i + '~' + (++KSEQ))
+      old.fs = s
+      old.s = delta
+    } else old.s = s
+  }
   SRC[old.i] = neu
+  NODES[old.i] = old
   FIELDS.forEach((k) => {
+    if (k === 'u' && old.t === 'a') return // 动画的当前帧由 startSprites 换
     const v = neu[k] === undefined ? EMPTY[k] : neu[k]
     if (old[k] !== v) old[k] = v
   })
   const f = neu.f || EMPTY.f
   if (!sameFrames(old.f, f)) old.f = f
   const a = old.c
-  const b = neu.c || []
+  const byId = {}
+  a.forEach((sl) => (byId[sl.w[0].t + sl.w[0].i] = sl))
+  const b = (neu.c || []).map((c) => {
+    const sl = byId[c.t + c.i]
+    if (!sl) return slot(normalize(c))
+    const node = patch(sl.w[0], c)
+    if (node !== sl.w[0]) sl.w = [node]
+    return sl
+  })
   let same = a.length === b.length
-  for (let i = 0; same && i < a.length; i++) same = a[i].i === b[i].i && a[i].t === b[i].t
-  if (same) {
-    for (let i = 0; i < a.length; i++) patch(a[i], b[i])
-  } else {
-    old.c = b.map(normalize)
-  }
+  for (let i = 0; same && i < a.length; i++) same = a[i] === b[i]
+  if (!same) old.c = b
+  return old
 }
-
 
 export default {
   private: {
@@ -219,9 +291,12 @@ export default {
     this.have = {} // 手环上已有的代码和图片
     this.asked = {} // 已经向 Mac 要过的哈希 → 时间
     this.parts = {}
-    this.started = {} // 已经启动的动画：{id: 帧签名}
+    this.anims = {} // 正在播的动画：{id: {sig, node, timer}}
     this.pagerAt = {} // Pager（swiper）实际停在第几页：{id: 页码}，以 swiper 报上来的为准
     this.lastTap = 0
+    this.heard = false // 这次 hello 之后收到过 Mac 的消息没有
+    this.helloSeq = 0
+    this.sendErrs = [] // 发送失败的记录，Mac 有回应后发过去记日志
     this.conn = interconnect.instance()
     this.conn.onopen = () => {
       this.connected = true
@@ -236,13 +311,21 @@ export default {
       } catch (e) {
         return
       }
-      if (m) this.handle(m)
+      if (!m) return
+      if (!this.heard) {
+        this.heard = true
+        if (this.sendErrs.length > 0) {
+          this.log('', 'warn', '发给 Mac 失败过：' + this.sendErrs.join('，'))
+          this.sendErrs = []
+        }
+      }
+      this.handle(m)
     }
   },
 
   onShow() {
     this.asked = {}
-    this.started = {}
+    this.stopSprites()
     const ready = () => this.layout(() => this.listFiles(() => {
       this.show()
       this.hello()
@@ -266,11 +349,13 @@ export default {
   },
 
   onHide() {
+    this.stopSprites()
     this.save()
     this.send({ t: 'bye' })
   },
 
   onDestroy() {
+    this.stopSprites()
     this.send({ t: 'bye' })
   },
 
@@ -285,15 +370,34 @@ export default {
   },
 
   send(obj) {
+    const fail = (d, code) => {
+      if (this.sendErrs.length >= 5) return
+      let why = code === undefined ? d : code
+      try {
+        if (typeof why === 'object') why = JSON.stringify(why)
+      } catch (e) {}
+      this.sendErrs.push(obj.t + ' ' + why)
+    }
     try {
-      this.conn.send({ data: obj, success: () => {}, fail: () => {} })
-    } catch (e) {}
+      this.conn.send({ data: obj, success: () => {}, fail })
+    } catch (e) {
+      fail(e && e.message ? e.message : e)
+    }
   },
 
+  // Mac 收到 hello 才开始发插件和数据（会马上回插件列表）。有的手环（小米手环 9 Pro）刚连上时发的消息会丢，
+  // 没等到回应就每秒重发，最多 10 次
   hello() {
-    this.send({ t: 'hello', w: 212, h: this.pageH, have: Object.keys(this.have) })
-    const p = this.plugins[this.active]
-    if (p) this.send({ t: 'nav', name: p.name })
+    const seq = ++this.helloSeq
+    this.heard = false
+    const say = (tries) => {
+      if (seq !== this.helloSeq || this.heard) return
+      this.send({ t: 'hello', w: 212, h: this.pageH, have: Object.keys(this.have) })
+      const p = this.plugins[this.active]
+      if (p) this.send({ t: 'nav', name: p.name })
+      if (tries < 10) setTimeout(() => say(tries + 1), 1000)
+    }
+    say(1)
   },
 
   log(name, level, msg) {
@@ -484,9 +588,12 @@ export default {
     }
     this.waiting = null
     const t0 = Date.now()
-    if (this.root && this.root.i === tree.i && this.root.t === tree.t) patch(this.root, tree)
-    else {
-      this.root = normalize(tree)
+    const same = this.root && this.root.i === tree.i && this.root.t === tree.t
+    NEWN = 0
+    const root = same ? patch(this.root, tree) : normalize(tree)
+    if (root !== this.root) {
+      if (!same) NODES = {}
+      this.root = root
       this.pagerAt = {} // 新建的 swiper 从第 0 页开始
     }
     this.startSprites(info.sprites)
@@ -496,11 +603,16 @@ export default {
       const end = Date.now()
       const tm = timing || {}
       const step = (name, ms) => (ms === undefined ? '' : ' ' + name + ' ' + ms)
-      if (end - this.tapAt > 200) {
-        this.log('', 'info', '点击到界面更新 ' + (end - this.tapAt) + 'ms：' +
-          step('事件', tm.at === undefined ? undefined : tm.at - this.tapAt) + step('插件代码', tm.comp) + step('转节点', tm.build) +
-          step('样式', tm.style) + step('检查', t0 - tc) + step('更新', end - t0))
-      }
+      const tapAt = this.tapAt
+      const created = NEWN
+      // 框架：交给框架后 JS 线程还被占了多久（下一个计时器多久才轮到）
+      setTimeout(() => {
+        const done = Date.now()
+        if (done - tapAt <= 200) return
+        this.log('', 'info', '点击到界面更新 ' + (done - tapAt) + 'ms：' +
+          step('事件', tm.at === undefined ? undefined : tm.at - tapAt) + step('插件代码', tm.comp) + step('转节点', tm.build) +
+          step('样式', tm.style) + step('检查', t0 - tc) + step('更新', end - t0) + step('框架', done - end) + step('新建节点', created))
+      }, 0)
       this.tapAt = 0
     }
   },
@@ -509,7 +621,7 @@ export default {
     if (i < 0 || i >= this.plugins.length || i === this.active) return
     this.active = i
     this.waiting = null
-    this.started = {}
+    this.stopSprites()
     this.pagerAt = {}
     this.show()
     this.send({ t: 'nav', name: this.plugins[i].name })
@@ -585,36 +697,49 @@ export default {
     if (rt) rt.swipe(d)
   },
 
-  // image-animator 不会自己播：新出现的、换了帧的，等元素建好后 start
-  // sprites：树里的动画节点 {id: 帧签名}（scan 收集的）
+  // 动画（Sprite）画成普通 image，这里定时换它的图片地址播帧。不用 image-animator：
+  // 小米手环 9 Pro 上页面开着时拆掉一个 image-animator（换动画、切插件）整个手环会重启。
+  // sprites：树里的动画节点（scan 收集的）。新出现的、换了帧的从第一帧播，不在树里的停掉；
+  // 页面上的节点对象换了（整段子节点重建过）也重新开始，旧的计时器改的是已经不画的对象
   startSprites(sprites) {
-    const now = sprites
-    const todo = Object.keys(now).filter((id) => this.started[id] !== now[id])
-    this.started = now
-    todo.forEach((id) => this.startSprite(id, now[id], 0))
+    Object.keys(this.anims).forEach((id) => {
+      const a = this.anims[id]
+      if (!sprites[id] || sprites[id].sig !== a.sig || NODES[id] !== a.node) this.stopSprite(id)
+    })
+    Object.keys(sprites).forEach((id) => {
+      if (!this.anims[id]) this.startSprite(id, sprites[id])
+    })
   },
 
-  // 新建一页要几百毫秒（约 10ms 一个节点），元素还没建好就隔 50ms 再试，最多 2 秒
-  startSprite(id, sig, tries) {
-    setTimeout(() => {
-      if (this.started[id] !== sig) return // 已经换掉了
-      let el = null
-      try {
-        el = this.$element(id)
-      } catch (e) {}
-      if (el) {
-        try {
-          el.start()
-        } catch (e) {}
-        return
-      }
-      if (tries < 40) this.startSprite(id, sig, tries + 1)
-    }, tries === 0 ? 60 : 50)
+  startSprite(id, sp) {
+    const node = NODES[id]
+    if (!node) return
+    const a = { sig: sp.sig, node, timer: 0 }
+    this.anims[id] = a
+    if (sp.frames.length === 0) return
+    node.u = sp.frames[0]
+    if (sp.frames.length < 2) return
+    let i = 0
+    a.timer = setInterval(() => {
+      i = (i + 1) % sp.frames.length
+      node.u = sp.frames[i]
+    }, Math.max(50, Math.round(sp.ms / sp.frames.length)))
+  },
+
+  stopSprite(id) {
+    clearInterval(this.anims[id].timer)
+    delete this.anims[id]
+  },
+
+  // 熄屏、离开、换插件时停掉所有动画；再画树时重新开始
+  stopSprites() {
+    Object.keys(this.anims).forEach((id) => this.stopSprite(id))
   },
 
   layout(done) {
     device.getInfo({
       success: (info) => {
+        REBUILD = /Band 9/i.test(String(info.product || ''))
         const w = info.screenWidth || 0
         const h = info.screenHeight || 0
         if (w > 0 && h > 0) this.pageH = Math.round(h / (w / 212))
